@@ -17,9 +17,9 @@ public class MoSSo extends SupernodeHelper {
     private long start;
 
     public long total_trials = 0;
-    private long TRIALS_PER_DEGRADE = 300_000L;
+    private long TRIALS_PER_DEGRADE = 500_000L;
     private int MAX_CONCEPTUAL_ROUND = 50;
-    private double START_THRESHOLD = 0.5;
+    private double START_THRESHOLD = 0.6;
     private double END_THRESHOLD = 0.005;
     private double RATIO_BASE =  Math.pow(END_THRESHOLD / START_THRESHOLD, 1.0 / (MAX_CONCEPTUAL_ROUND - 1));
 
@@ -363,7 +363,7 @@ public class MoSSo extends SupernodeHelper {
             return END_THRESHOLD;
         }
 
-        double r = Math.pow(RATIO_BASE, 1.0 / (round - 1));
+        double r = Math.pow(RATIO_BASE, 1.0 / (MAX_CONCEPTUAL_ROUND - 1));
         double threshold = START_THRESHOLD * Math.pow(r, round - 1);
         // minHash is an approximation of Jaccard - hence use jaccard cut 
         return threshold / (1.0 - threshold);
@@ -385,7 +385,7 @@ public class MoSSo extends SupernodeHelper {
             // breaks because this and all coming score are below the threshold (scores are descending sorted)
             if (bCandidateScores[i] < threshold) {
                 num_thresold_breaks++;
-                continue; // skip if candidate does not meet the threshold
+                break; // skip if candidate does not meet the threshold
             }
 
             int superNodeCandidate = V.getInt(candidate);
