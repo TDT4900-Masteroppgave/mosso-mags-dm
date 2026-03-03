@@ -398,8 +398,7 @@ public class MoSSo extends SupernodeHelper {
 
             if (randInt(1, getDegree(y)) <= 1) {
 
-                // find topB candidates by similarity scores for candidates in the same minhash bucket as y
-                for (int candidate : srcGrp.get(minHash[which].getInt(y))) { 
+                for (int candidate : srcnbd) { 
                     if (candidate == y) continue;
 
                     double similarity_score = calculateMH(y, candidate);
@@ -425,7 +424,6 @@ public class MoSSo extends SupernodeHelper {
                         }
                     }
 
-                }
 
                 
                 if ((randInt(1, 10) > escape || iteration < 1000) && topScores[0] > -Double.MAX_VALUE) { // if not corrective escape and there are at least one candidate
