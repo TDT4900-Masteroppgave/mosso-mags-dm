@@ -12,21 +12,34 @@ def plot_results(csv_file, plot_file, logger):
     ratio_cols = [f"Ratio_{s}" for s in strategies]
     time_cols = [f"Time_{s}" for s in strategies]
 
+    if not ratio_cols or not time_cols:
+        logger.warning("[!] No valid Time or Ratio data found to plot. Skipping plot generation.")
+        return
+
+    valid_ratio_cols = [c for c in ratio_cols if c in df.columns]
+    valid_time_cols = [c for c in time_cols if c in df.columns]
+
+    if not valid_ratio_cols and not valid_time_cols:
+        logger.warning("[!] No valid columns found in dataframe. Skipping plot.")
+        return
+
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
     # Use a dynamic colormap
     cmap = plt.get_cmap('tab10')
     colors = cmap(np.linspace(0, 1, len(strategies)))
 
-    df.plot(x="Dataset", y=ratio_cols, kind="bar", ax=axes[0], color=colors)
-    axes[0].set_title("Compression Ratio (Lower is Better)")
-    axes[0].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
-    axes[0].legend(strategies)
+    if valid_ratio_cols:
+        df.plot(x="Dataset", y=valid_ratio_cols, kind="bar", ax=axes[0], color=colors[:len(valid_ratio_cols)])
+        axes[0].set_title("Compression Ratio (Lower is Better)")
+        axes[0].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
+        axes[0].legend([c.replace("Ratio_", "") for c in valid_ratio_cols])
 
-    df.plot(x="Dataset", y=time_cols, kind="bar", ax=axes[1], color=colors)
-    axes[1].set_title("Execution Time (Seconds)")
-    axes[1].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
-    axes[1].legend(strategies)
+    if valid_time_cols:
+        df.plot(x="Dataset", y=valid_time_cols, kind="bar", ax=axes[1], color=colors[:len(valid_time_cols)])
+        axes[1].set_title("Execution Time (Seconds)")
+        axes[1].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
+        axes[1].legend([c.replace("Time_", "") for c in valid_time_cols])
 
     plt.tight_layout()
     plt.savefig(plot_file)
@@ -54,7 +67,7 @@ def plot_runs_variance(dataset_name, all_times_dict, all_ratios_dict, runs_dir):
     axes[1].legend()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(runs_dir, f"{dataset_name}_variance_plot.pdf"))
+    plt.savefig(os.path.join(runs_dir, f"{dataset_name}.pdf"))
     plt.close()
 
 def plot_parameter_analysis(csv_file, param_name, plot_file):
@@ -72,13 +85,16 @@ def plot_parameter_analysis(csv_file, param_name, plot_file):
     for idx, strat in enumerate(strategies):
         marker = markers[idx % len(markers)]
         color = colors[idx]
-
-        # Style baseline as a dashed line to stand out
         line_style ='-'
         line_width = 2.5
 
-        axes[0].plot(avg_df[param_name], avg_df[f'Ratio_{strat}'], marker=marker, linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
-        axes[1].plot(avg_df[param_name], avg_df[f'Time_{strat}'], marker=marker, linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
+        if f'Ratio_{strat}' in avg_df.columns and not avg_df[f'Ratio_{strat}'].isnull().all():
+            axes[0].plot(avg_df[param_name], avg_df[f'Ratio_{strat}'], marker=marker,
+                         linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
+
+        if f'Time_{strat}' in avg_df.columns and not avg_df[f'Time_{strat}'].isnull().all():
+            axes[1].plot(avg_df[param_name], avg_df[f'Time_{strat}'], marker=marker,
+                         linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
 
     axes[0].set_title(f"Average Compression Ratio vs {param_name.upper()}", fontsize=14, fontweight='bold')
     axes[0].set_xlabel(f"Parameter: {param_name.upper()}", fontsize=12)
@@ -100,22 +116,22 @@ def plot_parameter_analysis(csv_file, param_name, plot_file):
     plt.savefig(plot_file)
     plt.close()
 
+# In get_pareto_front_2d()
 def get_pareto_front_2d(df, x_col, y_col):
     """
-    Calculates the Pareto front for two metrics we want to MINIMIZE.
-    O(n log n) efficiency using sorting.
+    Calculates the Pareto front
     """
-    # Sort by Time ascending, then Ratio ascending
     sorted_df = df.sort_values(by=[x_col, y_col])
-    pareto_front = []
+
+    pareto_indices = []
     min_y = float('inf')
 
-    for _, row in sorted_df.iterrows():
+    for index, row in sorted_df.iterrows():
         if row[y_col] < min_y:
-            pareto_front.append(row)
+            pareto_indices.append(index)
             min_y = row[y_col]
 
-    return pd.DataFrame(pareto_front)
+    return df.loc[pareto_indices].copy()
 
 def plot_pareto_front(csv_file, plot_file):
     df = pd.read_csv(filepath_or_buffer=str(csv_file)) # Fixed IDE warning
