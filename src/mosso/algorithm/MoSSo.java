@@ -348,48 +348,54 @@ public class MoSSo extends SupernodeHelper {
     }
 
     private void _processEdge(final int dst, IntArrayList srcnbd, final int which) {
+        IntArrayList testing_nodes = new IntArrayList();
         Long2ObjectOpenHashMap<IntArrayList> srcGrp = new Long2ObjectOpenHashMap<>();
-        if(getDegree(dst) > 0) srcnbd.set(0, dst);
 
-        // coarse clustering using minhash
+        // creates testing nodes from testing pool by accepting each node with probability 1/deg(w)
         for (int v : srcnbd) {
-            long target = minHash[which].getInt(v);
-            if (!srcGrp.containsKey(target)) srcGrp.put(target, new IntArrayList());
-            srcGrp.get(target).add(v);
+            if (!testing_nodes.contains(v) && randInt(1, getDegree(v)) <= 1 ) {
+                testing_nodes.add(v);
+            }
         }
 
-        for (int i = 0; i < sampleNumber; i++) {
-            int nbd = srcnbd.getInt(i);
-            if (randInt(1, getDegree(nbd)) <= 1) {
-                long mh = minHash[which].getInt(nbd);
+        if(getDegree(dst) > 0 && !testing_nodes.contains(dst)) testing_nodes.add(dst);
 
-                // MAGS-DM: Similarity Measure
-                int bestTarget = -1;
-                double maxSimilarity = -1.0;
+        // coarse clustering using minhash
+        for (int testing_node : testing_nodes) {
+            long target = minHash[which].getInt(testing_node);
+            if (!srcGrp.containsKey(target)) srcGrp.put(target, new IntArrayList());
+            srcGrp.get(target).add(testing_node);
+        }
 
-                IntArrayList candidatePool = srcGrp.get(mh);
-                for (int candidate: candidatePool) {
-                    if (candidate == nbd) continue;
+        for (int testing_node : testing_nodes) {
+            long mh = minHash[which].getInt(testing_node);
 
-                    double similarity = calculateMH(nbd, candidate, maxSimilarity);
+            // MAGS-DM: Similarity Measure
+            int bestTarget = -1;
+            double maxSimilarity = -1.0;
 
-                    if (similarity > maxSimilarity) {
-                        maxSimilarity = similarity;
-                        bestTarget = candidate;
-                    }
+            IntArrayList candidatePool = srcGrp.get(mh);
+            for (int candidate: candidatePool) {
+                if (candidate == testing_node) continue;
+
+                double similarity = calculateMH(testing_node, candidate, maxSimilarity);
+
+                if (similarity > maxSimilarity) {
+                    maxSimilarity = similarity;
+                    bestTarget = candidate;
                 }
+            }
 
-                if (bestTarget == -1) {
-                    bestTarget = nbd;
-                }
+            if (bestTarget == -1) {
+                bestTarget = testing_node;
+            }
 
-                // Proceed with MoSSo's original update logic using the newly found best target
-                if (randInt(1, 10) > escape || iteration < 1000) {
-                    tryNodalUpdate(nbd, V.getInt(bestTarget));
-                } else {
-                    // only if the supernode containing nbd is not singleton
-                    if(getSize(V.getInt(nbd)) > 1) tryNodalUpdate(nbd, newSupernode());
-                }
+            // Proceed with MoSSo's original update logic using the newly found best target
+            if (randInt(1, 10) > escape || iteration < 1000) {
+                tryNodalUpdate(testing_node, V.getInt(bestTarget));
+            } else {
+                // only if the supernode containing nbd is not singleton
+                if(getSize(V.getInt(testing_node)) > 1) tryNodalUpdate(testing_node, newSupernode());
             }
         }
     }
