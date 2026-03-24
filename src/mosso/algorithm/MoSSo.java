@@ -328,26 +328,31 @@ public class MoSSo extends SupernodeHelper {
 
     private void _processEdge(final int dst, IntArrayList srcnbd, final int which) {
         Long2ObjectOpenHashMap<IntArrayList> srcGrp = new Long2ObjectOpenHashMap<>();
-        if(getDegree(dst) > 0) srcnbd.set(0, dst);
-        // coarse clustering using minhash
+        IntArrayList testing_nodes = new IntArrayList();
+
         for (int v : srcnbd) {
-            long target = minHash[which].getInt(v);
-            if (!srcGrp.containsKey(target)) srcGrp.put(target, new IntArrayList());
-            srcGrp.get(target).add(v);
+            if (!testing_nodes.contains(v) && randInt(1, getDegree(v)) <= 1) {
+                testing_nodes.add(v);
+            }
         }
-        for (int i = 0; i < sampleNumber; i++) {
-            int nbd = srcnbd.getInt(i);
-            if (randInt(1, getDegree(nbd)) <= 1) {
-                long mh = minHash[which].getInt(nbd);
-                int sz = srcGrp.get(mh).size();
-                // choose random node in the cluster containing nbd
-                int target = srcGrp.get(mh).getInt(randInt(0, sz - 1));
-                if (randInt(1, 10) > escape || iteration < 1000) {
-                    tryNodalUpdate(nbd, V.getInt(target));
-                } else {
-                    // only if the supernode containing nbd is not singleton
-                    if(getSize(V.getInt(nbd)) > 1) tryNodalUpdate(nbd, newSupernode());
-                }
+
+        if(getDegree(dst) > 0 && !testing_nodes.contains(dst)) testing_nodes.add(0, dst);
+        // coarse clustering using minhash
+        for (int testing_node : testing_nodes) {
+            long target = minHash[which].getInt(testing_node);
+            if (!srcGrp.containsKey(target)) srcGrp.put(target, new IntArrayList());
+            srcGrp.get(target).add(testing_node);
+        }
+        for (int testing_node : testing_nodes) {
+            long mh = minHash[which].getInt(testing_node);
+            int sz = srcGrp.get(mh).size();
+            // choose random node in the cluster containing nbd
+            int target = srcGrp.get(mh).getInt(randInt(0, sz - 1));
+            if (randInt(1, 10) > escape || iteration < 1000) {
+                tryNodalUpdate(testing_node, V.getInt(target));
+            } else {
+                // only if the supernode containing nbd is not singleton
+                if(getSize(V.getInt(testing_node)) > 1) tryNodalUpdate(testing_node, newSupernode());
             }
         }
     }

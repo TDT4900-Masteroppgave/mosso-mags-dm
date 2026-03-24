@@ -51,6 +51,11 @@ ALGORITHMS = {
         "branch": "feature/merging_strategy_2_cap",
         "template": ["e", "c", "interval", "cap"]
     },
+    "testing_nodes": {
+        "repo": BASE_REPO_URL,
+        "branch": "fix/testing_nodes",
+        "template": ["e", "c", "interval", "cap"]
+    },
 }
 
 DATASETS = {
