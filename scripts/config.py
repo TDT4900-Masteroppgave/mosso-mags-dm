@@ -28,7 +28,7 @@ ALGORITHMS = {
     "kdd20-mosso": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
-        "params" : {"c": 120, "e": 3},
+        "params" : {"c": 240, "e": 3},
         "template": ["e", "c", "interval"]
     },
     "strat_1": {
@@ -49,6 +49,11 @@ ALGORITHMS = {
     "strat_2_cap": {
         "repo": BASE_REPO_URL,
         "branch": "feature/merging_strategy_2_cap",
+        "template": ["e", "c", "interval", "cap"]
+    },
+    "testing_nodes": {
+        "repo": BASE_REPO_URL,
+        "branch": "fix/testing_nodes",
         "template": ["e", "c", "interval", "cap"]
     },
 }
