@@ -133,69 +133,66 @@ def get_pareto_front_2d(df, x_col, y_col):
 
     return df.loc[pareto_indices].copy()
 
-def plot_pareto_front(csv_file, plot_file):
-    df = pd.read_csv(filepath_or_buffer=str(csv_file)) # Fixed IDE warning
+def plot_pareto_front(csv_file, plot_file, logger):
+    df = pd.read_csv(csv_file)
     if df.empty: return
 
-    # Identify unique datasets to create subplots
     datasets = df['Dataset'].unique()
     n_datasets = len(datasets)
-
-    # Dynamically calculate grid size (2 columns wide)
-    cols = 2 if n_datasets > 1 else 1
-    rows = (n_datasets + 1) // 2
-
-    fig, axes = plt.subplots(rows, cols, figsize=(7 * cols, 6 * rows))
-
-    # Ensure axes is always a flattened array for easy iteration
+    cols = 2
+    rows = (n_datasets + 1) // cols
     if n_datasets == 1:
-        axes = np.array([axes])
-    axes = axes.flatten()
+        cols = 1
+        rows = 1
 
-    # Create a consistent color map for algorithms
-    algorithms = df['Algorithm'].unique()
-    cmap = plt.get_cmap('tab10')
-    colors = {algo: cmap(i / max(1, len(algorithms) - 1)) for i, algo in enumerate(algorithms)}
+    fig, axes = plt.subplots(rows, cols, figsize=(8 * cols, 6 * rows))
+    if n_datasets == 1:
+        axes = [axes]
+    else:
+        axes = axes.flatten()
 
     for i, dataset in enumerate(datasets):
         ax = axes[i]
         ds_df = df[df['Dataset'] == dataset]
 
-        # 1. Scatter plot all LHS samples (The "Cloud")
-        for algo in algorithms:
+        algos = ds_df['Algorithm'].unique()
+        cmap = plt.get_cmap('tab10')
+        colors = {algo: cmap(j) for j, algo in enumerate(algos)}
+
+        for algo in algos:
             algo_df = ds_df[ds_df['Algorithm'] == algo]
-            if algo_df.empty: continue
-
             ax.scatter(algo_df['Time'], algo_df['Ratio'],
-                       color=colors[algo], label=algo, alpha=0.4, s=40, edgecolors='none')
+                       color=colors[algo], alpha=0.3, s=30, edgecolors='none', label=f'{algo} (All)')
 
-        # 2. Calculate and plot the Global Pareto Front
-        pareto_df = get_pareto_front_2d(ds_df, 'Time', 'Ratio')
+        for algo in algos:
+            algo_df = ds_df[ds_df['Algorithm'] == algo]
+            pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio')
 
-        if not pareto_df.empty:
-            # Draw the line connecting the optimal points
-            ax.plot(pareto_df['Time'], pareto_df['Ratio'],
-                    color='red', linestyle='--', linewidth=2, label='Global Pareto Front', alpha=0.8)
+            if not pareto_df.empty:
+                # Sort by Time so the line connects properly left-to-right
+                pareto_df = pareto_df.sort_values('Time')
 
-            # Highlight the Pareto-optimal configurations with distinct stars
-            ax.scatter(pareto_df['Time'], pareto_df['Ratio'],
-                       color='gold', edgecolor='red', zorder=5, s=150, marker='*', label='Optimal Config')
+                # Draw the Pareto line for this specific algorithm
+                ax.plot(pareto_df['Time'], pareto_df['Ratio'],
+                        color=colors[algo], linestyle='-', linewidth=2, alpha=0.9, label=f'{algo} (Front)')
 
-        # 3. Formatting
+                # Highlight the Pareto-optimal stars
+                ax.scatter(pareto_df['Time'], pareto_df['Ratio'],
+                           color=colors[algo], edgecolor='black', zorder=5, s=150, marker='*', label=f'{algo} (Optimal)')
+
         ax.set_title(f"Optimization Landscape: {dataset}", fontsize=13, fontweight='bold')
-        ax.set_xlabel("Execution Time (Seconds) ↓", fontsize=11)
-        ax.set_ylabel("Compression Ratio ↓", fontsize=11)
+        ax.set_xlabel("Execution Time (Seconds) ↓" if dataset != "GLOBAL_NORMALIZED_AVERAGE" else "Normalized Time Score ↓", fontsize=11)
+        ax.set_ylabel("Compression Ratio ↓" if dataset != "GLOBAL_NORMALIZED_AVERAGE" else "Normalized Ratio Score ↓", fontsize=11)
         ax.grid(True, linestyle=':', alpha=0.6)
 
-        # Deduplicate the legend
         handles, labels = ax.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=10)
+        ax.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=9)
 
-    # Clean up any empty subplots (if n_datasets is an odd number)
-    for j in range(len(datasets), len(axes)):
+    # Clean up empty subplots
+    for j in range(i + 1, len(axes)):
         fig.delaxes(axes[j])
 
     plt.tight_layout()
-    plt.savefig(plot_file, dpi=300, bbox_inches='tight')
+    plt.savefig(plot_file, format="pdf", bbox_inches="tight")
     plt.close()
