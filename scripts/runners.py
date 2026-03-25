@@ -113,7 +113,7 @@ class AlgorithmRunner(ABC):
             return parsed_time, parsed_ratio
 
         except subprocess.TimeoutExpired:
-            self.logger.error(f"[!] Execution TIMED OUT for {output_name} after {timeout} seconds. (Infinite loop?)")
+            self.logger.error(f"[!] Execution TIMED OUT for {output_name} after {timeout} seconds.")
             self.logger.debug(f"[!] Command was: {' '.join(cmd)}")
             return None, None
 
