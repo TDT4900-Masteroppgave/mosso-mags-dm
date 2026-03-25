@@ -135,12 +135,32 @@ def format_dataframe_with_baseline(df, strategies, baseline_algo=None):
 
 
 def get_datasets_to_run(args):
-    """Deciding which datasets to process."""
-    datasets_to_run = []
-    if args.group == "all":
-        for group in DATASETS.values():
-            datasets_to_run.extend(group)
-    else:
-        datasets_to_run.extend(DATASETS.get(args.group, []))
+    datasets = []
 
-    return datasets_to_run
+    if getattr(args, 'dataset', None):
+        # Flatten all datasets from config.py into a single list
+        all_available_datasets = []
+        for group in DATASETS.values():
+            all_available_datasets.extend(group)
+
+        # Match requested datasets by short_name (e.g., 'YT') or filename
+        for req in args.dataset:
+            matched = next((d for d in all_available_datasets if d['short_name'] == req or d['filename'] == req), None)
+            if matched:
+                if matched not in datasets:  # Prevent duplicates
+                    datasets.append(matched)
+            else:
+                print(f"[!] Warning: Dataset '{req}' not found in configuration. Skipping.")
+
+        if not datasets:
+            raise ValueError("No valid datasets found based on your --dataset argument.")
+
+    else:
+        if args.group == "all":
+            for group_datasets in DATASETS.values():
+                datasets.extend(group_datasets)
+        else:
+            datasets = DATASETS.get(args.group, [])
+            if not datasets:
+                raise ValueError(f"Dataset group '{args.group}' not found in config.")
+    return datasets

@@ -111,6 +111,8 @@ class Benchmark(ABC):
         parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
         parser.add_argument("--timeout", type=int, default=600,
                             help="Timeout in seconds for single algorithm execution (default: 600)")
+        parser.add_argument("--dataset", nargs='+', type=str,
+                            help="Specific dataset(s) to run by short_name (e.g., YT) or filename. Overrides --group.")
 
         for p_name, p_data in PARAM_CONFIG.items():
             parser.add_argument(f"--{p_name}", type=type(p_data["default"]), default=p_data["default"])
