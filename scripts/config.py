@@ -9,11 +9,12 @@ BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
 PARAM_CONFIG = {
     "c": {"description": "sample number", "default": 120, "bounds": (10, 240)},
-    "e": {"description": "escape", "default": 3, "bounds": (1, 9)},
-    "interval": {"description": "interval", "default": 1000},
+    "e": {"description": "escape", "default": 3, "bounds": (1, 5)},
+    "interval": {"description": "interval", "default": 10000},
     "b": {"description": "top candidates", "default": 5, "bounds": (1, 10)},
     "h": {"description": "hashes", "default": 4, "bounds": (4, 40)},
-    "cap": {"description": "size of partitions", "default": 15, "bounds": (1, 60)}
+    "thr": {"description": "threshold", "default": 0, "bounds": (0.0, 1.0)},
+    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (5, 240)},
 }
 
 ALGORITHMS = {
@@ -34,7 +35,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "feature/merging_strategy_1",
         "type": "mosso",
-        "template": ["e", "c", "interval"],
+        "template": ["e", "c", "interval", "b"],
         "binary_file": "mosso-strat_1.jar",
     },
     "strat_2": {
@@ -48,8 +49,29 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "feature/merging_strategy_1_2",
         "type": "mosso",
-        "template": ["e", "c", "interval", "b"],
-        "binary_file": "mosso-strat_2.jar",
+        "template": ["e", "c", "interval", "b", "h"],
+        "binary_file": "mosso-strat_1_2.jar",
+    },
+    "strat_2_thr": {
+        "repo": BASE_REPO_URL,
+        "branch": "feature/strat_2_threshold",
+        "type": "mosso",
+        "template": ["e", "c", "interval", "h", "thr"],
+        "binary_file": "mosso-strat_2_thr.jar",
+    },
+    "strat_2_cap": {
+        "repo": BASE_REPO_URL,
+        "branch": "feature/merging_strategy_2_cap",
+        "type": "mosso",
+        "template": ["e", "c", "interval", "h", "cap"],
+        "binary_file": "mosso-strat_2_cap.jar",
+    },
+    "fix_testing_nodes": {
+        "repo": BASE_REPO_URL,
+        "branch": "fix/testing_nodes",
+        "type": "mosso",
+        "template": ["e", "c", "interval"],
+        "binary_file": "mosso-fix_testing_nodes.jar",
     },
     "mags": {
         "repo": "https://github.com/nedchu/mags-release",
@@ -64,11 +86,6 @@ ALGORITHMS = {
         "type": "mags",
         "template": [],
         "binary_file": "mags_dm",
-    },
-    "strat_2_cap": {
-        "repo": BASE_REPO_URL,
-        "branch": "feature/merging_strategy_2_cap",
-        "template": ["e", "c", "interval", "cap"]
     },
 }
 

@@ -29,13 +29,13 @@ class BayesianOptimizationBenchmark(Benchmark):
                 self.logger.info(f"\n[*] Skipping [{algo_name}]: No hyperparameters to optimize.")
                 continue
 
-            def objective(trial):
+            def objective(objective_trial):
                 resolved_params = {}
 
                 for p_key in template:
                     bounds = PARAM_CONFIG.get(p_key, {}).get("bounds")
                     if bounds:
-                        resolved_params[p_key] = trial.suggest_int(p_key, bounds[0], bounds[1])
+                        resolved_params[p_key] = objective_trial.suggest_int(p_key, bounds[0], bounds[1])
                     else:
                         resolved_params[p_key] = PARAM_CONFIG.get(p_key, {}).get("default")
 
@@ -88,10 +88,9 @@ class BayesianOptimizationBenchmark(Benchmark):
 
         # Group by Hyperparameters and calculate the mean
         group_cols = [col for col in df.columns if col not in ['Dataset', 'Time', 'Ratio', 'Time_Norm', 'Ratio_Norm']]
-        avg_df = df.groupby(group_cols).mean(numeric_only=True).reset_index()
+        avg_df = df.groupby(group_cols, dropna=False).mean(numeric_only=True).reset_index()
 
-        # Preserve the raw averages for display, but overwrite the main
-        # Time/Ratio columns with the Normalized values so the plotter uses them!
+        # Overwrite the main Time/Ratio columns with the Normalized values
         avg_df['Raw_Time_Avg'] = avg_df['Time']
         avg_df['Raw_Ratio_Avg'] = avg_df['Ratio']
 
@@ -107,30 +106,38 @@ class BayesianOptimizationBenchmark(Benchmark):
         avg_df = self._get_averaged_dataframe()
         if avg_df.empty: return
 
-        # Calculate Pareto using the new Normalized 0-1 metrics
-        pareto_df = get_pareto_front_2d(avg_df, 'Time', 'Ratio').sort_values(by=["Ratio", "Time"])
+        self.logger.info("\n--- OPTUNA OPTIMIZATION: PARETO FRONTS (Normalized Scale 0.0 - 1.0) ---")
 
-        # Rename columns for the terminal so it makes sense to the reader
-        display_df = pareto_df.rename(columns={
-            'Time': 'Norm_Time_Score',
-            'Ratio': 'Norm_Ratio_Score'
-        })
+        # Split the data by algorithm and print a separate Pareto table for each
+        for algo in avg_df['Algorithm'].unique():
+            algo_df = avg_df[avg_df['Algorithm'] == algo]
+            pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio').sort_values(by=["Ratio", "Time"])
 
-        # Rearrange columns so the Raw averages are next to the Normalized scores
-        cols = ['Algorithm'] + [c for c in display_df.columns if c not in ['Dataset', 'Algorithm', 'Raw_Time_Avg', 'Raw_Ratio_Avg', 'Norm_Time_Score', 'Norm_Ratio_Score']] + ['Raw_Time_Avg', 'Norm_Time_Score', 'Raw_Ratio_Avg', 'Norm_Ratio_Score']
-        display_df = display_df[cols]
+            display_df = pareto_df.rename(columns={
+                'Time': 'Norm_Time_Score',
+                'Ratio': 'Norm_Ratio_Score'
+            })
 
-        self.logger.info("\n--- OPTUNA OPTIMIZATION: GLOBAL PARETO FRONT (Normalized Scale 0.0 - 1.0) ---")
-        self.logger.info(tabulate(display_df, headers='keys', tablefmt='grid', showindex=False))
+            cols = ['Algorithm'] + [c for c in display_df.columns if c not in ['Dataset', 'Algorithm', 'Raw_Time_Avg', 'Raw_Ratio_Avg', 'Norm_Time_Score', 'Norm_Ratio_Score']] + ['Raw_Time_Avg', 'Norm_Time_Score', 'Raw_Ratio_Avg', 'Norm_Ratio_Score']
+            display_df = display_df[cols]
+
+            self.logger.info(f"\n[*] Pareto Front for: {algo}")
+            self.logger.info(tabulate(display_df, headers='keys', tablefmt='grid', showindex=False))
 
     def finalize(self):
         if not self.results: return
         raw_df = pd.DataFrame(self.results)
         avg_df = self._get_averaged_dataframe()
 
-        table_output = "--- OPTUNA SEARCH RESULTS (Priority: Ratio > Time) ---\n"
-        sorted_avg_df = avg_df.sort_values(by=["Ratio", "Time"])
-        table_output += tabulate(sorted_avg_df, headers='keys', tablefmt='grid')
+        table_output = "--- OPTUNA SEARCH RESULTS ---\n"
+
+        # Save the separated Pareto fronts to the text file
+        for algo in avg_df['Algorithm'].unique():
+            algo_df = avg_df[avg_df['Algorithm'] == algo]
+            pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio').sort_values(by=["Ratio", "Time"])
+
+            table_output += f"\n[*] PARETO FRONT: {algo}\n"
+            table_output += tabulate(pareto_df, headers='keys', tablefmt='grid', showindex=False) + "\n"
 
         with open(os.path.join(self.session_dir, "table_results.txt"), "w") as f:
             f.write(table_output)
@@ -140,7 +147,7 @@ class BayesianOptimizationBenchmark(Benchmark):
 
         try:
             plot_file = os.path.join(self.session_dir, "pareto_front.pdf")
-            plot_pareto_front(csv_file, plot_file)
+            plot_pareto_front(csv_file, plot_file, self.logger)
             self.logger.info(f"[*] Pareto front plot saved to: {plot_file}")
         except Exception as e:
             self.logger.error(f"[!] Failed to generate Pareto plot: {e}")
