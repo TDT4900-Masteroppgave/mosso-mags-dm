@@ -113,6 +113,8 @@ class Benchmark(ABC):
                             help="Timeout in seconds for single algorithm execution (default: 600)")
         parser.add_argument("--dataset", nargs='+', type=str,
                             help="Specific dataset(s) to run by short_name (e.g., YT) or filename. Overrides --group.")
+        parser.add_argument("--is-local", action="store_true",
+                            help="Include the local directory code in the benchmark.")
 
         for p_name, p_data in PARAM_CONFIG.items():
             parser.add_argument(f"--{p_name}", type=type(p_data["default"]), default=p_data["default"])
@@ -125,6 +127,9 @@ class Benchmark(ABC):
             self.active_algos = {k: v for k, v in ALGORITHMS.items() if k in args.algorithm}
         else:
             self.active_algos = {k: v for k, v in ALGORITHMS.items() if k != "local"}
+
+        if args.is_local:
+            self.active_algos["local"] = ALGORITHMS["local"]
 
         if args.baseline and args.baseline not in ALGORITHMS:
             print(f"[!] The specified baseline '{args.baseline}' is not in the active algorithms list.")

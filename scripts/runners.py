@@ -21,7 +21,7 @@ class AlgorithmRunner(ABC):
         self.session_dir = session_dir
 
         self.target_dir = Path(self.config.get("target_dir", os.path.join(VERSIONS_DIR, algo_name)))
-        self.is_local = self.target_dir == "."
+        self.is_local = str(self.target_dir) == "."
 
     @abstractmethod
     def get_binary_path(self):
@@ -165,7 +165,7 @@ class AlgorithmRunner(ABC):
         format_dataset_path = self.format_dataset(dataset_path)
 
         if runs > 1:
-            self.logger.info(f"\t[*] Executing Warmup Run for {self.algo_name}...")
+            self.logger.debug(f"\t[*] Executing Warmup Run for {self.algo_name}...")
             self.run_single(format_dataset_path, f"{base_output_name}_warmup", parameters, template,
                             keep_summaries=False, timeout=timeout)
 
@@ -203,7 +203,11 @@ class MossoRunner(AlgorithmRunner):
 
         self._run_cmd(["bash", "compile.sh"], cwd=self.target_dir)
 
-        shutil.move(os.path.join(self.target_dir, "mosso-1.0.jar"), self.get_binary_path())
+        compiled_jar = os.path.join(self.target_dir, "mosso-1.0.jar")
+        target_jar = self.get_binary_path()
+
+        if os.path.exists(compiled_jar) and os.path.abspath(compiled_jar) != os.path.abspath(target_jar):
+            shutil.move(compiled_jar, target_jar)
 
     def build_command(self, dataset_path, graph_output_path, parameters, template):
         classpath = f"{self.fastutil_path}{os.pathsep}{self.get_binary_path()}"
