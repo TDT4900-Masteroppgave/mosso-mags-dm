@@ -13,7 +13,7 @@ PARAM_CONFIG = {
     "interval": {"description": "interval", "default": 10000},
     "b": {"description": "top candidates", "default": 5, "bounds": (1, 10)},
     "h": {"description": "hashes", "default": 4, "bounds": (4, 40)},
-    "thr": {"description": "threshold", "default": 0, "bounds": (0.0, 1.0)},
+    "thr": {"description": "threshold", "default": 0.0, "bounds": (0.0, 1.0)},
     "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (5, 240)}
 }
 
