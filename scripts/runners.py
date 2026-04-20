@@ -134,7 +134,7 @@ class AlgorithmRunner(ABC):
         if os.path.exists(formatted_path):
             return formatted_path
 
-        self.logger.info(f"\t[*] Cleaning dataset for {self.algo_name}: {basename}")
+        self.logger.info(f"\t[*] Cleaning dataset for {self.__class__.__name__}: {basename}")
         seen_edges = set()
         with (open(original_dataset_path, 'r', encoding='utf-8') as f_in,
               open(formatted_path, 'w', encoding='utf-8') as f_out):
