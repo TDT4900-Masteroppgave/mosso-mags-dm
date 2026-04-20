@@ -66,6 +66,20 @@ ALGORITHMS = {
         "template": ["e", "c", "interval", "h", "cap"],
         "binary_file": "mosso-strat_2_cap.jar",
     },
+    "strat_2_2hop": {
+        "repo": BASE_REPO_URL,
+        "branch": "feature/merging_strategy_2_2hop",
+        "type": "mosso",
+        "template": ["e", "c",  "interval"],
+        "binary_file": "mosso-strat_2_2hop.jar",
+    },
+    "strat_div": {
+        "repo": BASE_REPO_URL,
+        "branch": "feature/dividing-strategy",
+        "type": "mosso",
+        "template": ["e", "c",  "interval"],
+        "binary_file": "mosso-strat_div.jar",
+    },
     "fix_testing_nodes": {
         "repo": BASE_REPO_URL,
         "branch": "fix/testing_nodes",
