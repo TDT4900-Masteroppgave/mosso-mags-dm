@@ -90,19 +90,6 @@ ALGORITHMS = {
 }
 
 DATASETS = {
-    "one": [
-        {
-            "url": "https://snap.stanford.edu/data/as-caida20071105.txt.gz",
-            "filename": "as-caida20071105.txt",
-            "short_name": "CA",
-            "meta": {
-                "nodes": 26475,
-                "edges": 53381,
-                "size": "1.4 MB",
-                "avg_degree": 4.0,
-            }
-        }
-    ],
     "small": [
         {
             "url": "https://snap.stanford.edu/data/as-caida20071105.txt.gz",

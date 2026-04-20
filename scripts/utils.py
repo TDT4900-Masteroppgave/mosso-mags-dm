@@ -2,11 +2,13 @@ import subprocess
 import urllib.request
 import gzip
 import glob
+
 import pandas as pd
 
 from scripts.config import *
 import logging
 import sys
+import re
 
 def get_fastutil_path():
     fastutil_files = glob.glob("fastutil-*.jar")
@@ -32,7 +34,7 @@ def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch:
         raise e
 
 
-def download_and_prepare_dataset(url, filename, logger):
+def download_dataset(url, filename, logger):
     gz_path = os.path.join(DATASETS_DIR, filename + ".gz")
     txt_path = os.path.join(DATASETS_DIR, filename)
 

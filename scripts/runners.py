@@ -21,7 +21,7 @@ class AlgorithmRunner(ABC):
         self.session_dir = session_dir
 
         self.target_dir = Path(self.config.get("target_dir", os.path.join(VERSIONS_DIR, algo_name)))
-        self.is_local = self.target_dir == "."
+        self.is_local = str(self.target_dir) == "."
 
     @abstractmethod
     def get_binary_path(self):
@@ -33,7 +33,7 @@ class AlgorithmRunner(ABC):
         """Hook for subclasses to define specific build steps (CMake vs. Bash)."""
         pass
 
-    def _run_cmd(self, cmd: list[str], cwd=None, env=None, timeout=None):
+    def _run_cmd(self, cmd: list[str], cwd=None, env=None):
         """Standardized wrapper for executing shell commands."""
         try:
             return subprocess.run(
@@ -44,7 +44,6 @@ class AlgorithmRunner(ABC):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout
             )
         except subprocess.CalledProcessError as e:
             self.logger.error(f"[!] Command failed: {' '.join(cmd)}\nSTDERR: {e.stderr}")
@@ -82,7 +81,7 @@ class AlgorithmRunner(ABC):
     def parse_output(self, stdout: str):
         pass
 
-    def run_single(self, format_dataset_path, output_name, parameters, template, keep_summaries=False, timeout=600):
+    def run_single(self, format_dataset_path, output_name, parameters, template, keep_summaries=False):
         summary_dir = os.path.join(self.session_dir, "summarized_graphs")
         runs_dir = Path(self.session_dir) / "runs"
         graph_output_path = os.path.join(summary_dir, output_name)
@@ -91,7 +90,7 @@ class AlgorithmRunner(ABC):
         self.logger.debug(f"-> [{self.algo_name}] Running command: {' '.join(cmd)}")
 
         try:
-            result = self._run_cmd(cmd, timeout=timeout)
+            result = self._run_cmd(cmd)
             parsed_time, parsed_ratio = self.parse_output(result.stdout)
 
             run_log_file = runs_dir / f"{output_name}.log"
@@ -111,11 +110,6 @@ class AlgorithmRunner(ABC):
                             self.logger.debug(f"[!] Cleanup failed for {f.name}: {e}")
 
             return parsed_time, parsed_ratio
-
-        except subprocess.TimeoutExpired:
-            self.logger.error(f"[!] Execution TIMED OUT for {output_name} after {timeout} seconds.")
-            self.logger.debug(f"[!] Command was: {' '.join(cmd)}")
-            return None, None
 
         except subprocess.CalledProcessError as e:
             self.logger.error(f"[!] Execution crashed for {output_name}: {e}")
@@ -142,8 +136,8 @@ class AlgorithmRunner(ABC):
 
         self.logger.info(f"\t[*] Cleaning dataset for {self.algo_name}: {basename}")
         seen_edges = set()
-        with open(original_dataset_path, 'r', encoding='utf-8') as f_in, open(formatted_path, 'w',
-                                                                              encoding='utf-8') as f_out:
+        with (open(original_dataset_path, 'r', encoding='utf-8') as f_in,
+              open(formatted_path, 'w', encoding='utf-8') as f_out):
             for line in f_in:
                 if line.startswith(('#', '%')): continue
 
@@ -152,7 +146,9 @@ class AlgorithmRunner(ABC):
                     u, v = int(match.group(1)), int(match.group(2))
                     if u == v: continue  # Remove self-loops
 
+                    # ignore the direction of edge
                     edge = tuple(sorted((u, v)))
+                    # remove duplicate edges
                     if edge in seen_edges: continue
                     seen_edges.add(edge)
 
@@ -160,20 +156,19 @@ class AlgorithmRunner(ABC):
 
         return formatted_path
 
-    def run_multiple(self, dataset_path, base_output_name, runs, parameters, template, keep_summaries=False,
-                     timeout=600):
+    def run_multiple(self, dataset_path, base_output_name, runs, parameters, template, keep_summaries=False):
         format_dataset_path = self.format_dataset(dataset_path)
 
         if runs > 1:
-            self.logger.info(f"\t[*] Executing Warmup Run for {self.algo_name}...")
+            self.logger.debug(f"\t[*] Executing Warmup Run for {self.algo_name}...")
             self.run_single(format_dataset_path, f"{base_output_name}_warmup", parameters, template,
-                            keep_summaries=False, timeout=timeout)
+                            keep_summaries=False)
 
         times, ratios = [], []
         for i in range(runs):
             self.logger.debug(f"Iter {i + 1}/{runs} for {base_output_name}...")
             t, r = self.run_single(format_dataset_path, f"{base_output_name}_run{i + 1}", parameters, template,
-                                   keep_summaries, timeout)
+                                   keep_summaries)
             if t is not None and r is not None:
                 times.append(t)
                 ratios.append(r)
@@ -203,7 +198,11 @@ class MossoRunner(AlgorithmRunner):
 
         self._run_cmd(["bash", "compile.sh"], cwd=self.target_dir)
 
-        shutil.move(os.path.join(self.target_dir, "mosso-1.0.jar"), self.get_binary_path())
+        compiled_jar = os.path.join(self.target_dir, "mosso-1.0.jar")
+        target_jar = self.get_binary_path()
+
+        if os.path.exists(compiled_jar) and os.path.abspath(compiled_jar) != os.path.abspath(target_jar):
+            shutil.move(compiled_jar, target_jar)
 
     def build_command(self, dataset_path, graph_output_path, parameters, template):
         classpath = f"{self.fastutil_path}{os.pathsep}{self.get_binary_path()}"

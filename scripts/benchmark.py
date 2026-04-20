@@ -5,11 +5,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 import traceback
+import time
 
 from tabulate import tabulate
 
 from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, BENCHMARK_DIR
-from scripts.utils import setup_logging, setup_directories, get_datasets_to_run, download_and_prepare_dataset
+from scripts.utils import setup_logging, setup_directories, get_datasets_to_run, download_dataset
 from scripts.runners import get_runner
 
 
@@ -36,13 +37,9 @@ class Benchmark(ABC):
 
     def run(self) -> None:
         """The main execution lifecycle."""
-        import time
         start_time = time.time()
 
-        if not self._run_setup():
-            return
-
-        self.print_parameters()
+        self._run_setup()
         self._process_datasets()
         self._handle_results()
 
@@ -50,15 +47,14 @@ class Benchmark(ABC):
         self.logger.info(f"[*] Total Benchmark Time: {elapsed:.2f} seconds")
         self.logger.info(f"[*] Artifacts available in: {self.session_dir}")
 
-    def _run_setup(self) -> bool:
+    def _run_setup(self):
         self.logger.info("=" * 10 + f"{' SETUP ':^30}" + "=" * 10)
         try:
             self.setup()
-            return True
+            self.print_parameters()
         except Exception as e:
             self.logger.error(f"[!] Setup aborted: {e}")
             self.logger.debug(traceback.format_exc())
-            return False
 
     def _process_datasets(self) -> None:
         self.logger.info("=" * 10 + f"{' PROCESSING ':^30}" + "=" * 10)
@@ -68,13 +64,13 @@ class Benchmark(ABC):
             short_name = ds.get("short_name", filename)
 
             try:
-                dataset_path = download_and_prepare_dataset(url, filename, self.logger)
+                dataset_path = download_dataset(url, filename, self.logger)
 
                 if not dataset_path:
                     raise RuntimeError(f"Failed to download dataset {filename}.")
 
                 self.logger.info(f"[{i}/{len(self.datasets_to_run)}] Benchmarking [{short_name}] ({self.args.runs} runs) ...")
-                self.process(dataset_path, short_name)
+                self.process(dataset_path, ds, short_name)
 
             except Exception as e:
                 self.logger.error(f"[!] Processing aborted for {filename}: {e}")
@@ -109,10 +105,10 @@ class Benchmark(ABC):
         parser.add_argument("--group", choices=["all"] + list(DATASETS.keys()), default="all")
         parser.add_argument("--algorithm", nargs='+', help="Specific algorithms to run")
         parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
-        parser.add_argument("--timeout", type=int, default=600,
-                            help="Timeout in seconds for single algorithm execution (default: 600)")
         parser.add_argument("--dataset", nargs='+', type=str,
                             help="Specific dataset(s) to run by short_name (e.g., YT) or filename. Overrides --group.")
+        parser.add_argument("--is-local", action="store_true",
+                            help="Include the local directory code in the benchmark.")
 
         for p_name, p_data in PARAM_CONFIG.items():
             parser.add_argument(f"--{p_name}", type=type(p_data["default"]), default=p_data["default"])
@@ -125,6 +121,9 @@ class Benchmark(ABC):
             self.active_algos = {k: v for k, v in ALGORITHMS.items() if k in args.algorithm}
         else:
             self.active_algos = {k: v for k, v in ALGORITHMS.items() if k != "local"}
+
+        if args.is_local:
+            self.active_algos["local"] = ALGORITHMS["local"]
 
         if args.baseline and args.baseline not in ALGORITHMS:
             print(f"[!] The specified baseline '{args.baseline}' is not in the active algorithms list.")
@@ -204,8 +203,7 @@ class Benchmark(ABC):
             base_output_name=f"{algo_name}_{dataset_name}_{self.timestamp}",
             runs=self.args.runs,
             parameters=resolved_params,
-            template=template,
-            timeout=self.args.timeout
+            template=template
         )
 
     def setup(self) -> None:
@@ -220,25 +218,23 @@ class Benchmark(ABC):
             runner.build()
 
     def get_session_name(self) -> str:
-        """Hook to allow subclasses to name the folder (e.g., sweep_c_2026...)"""
+        """Hook to allow subclasses to name output folder"""
         return f"run_{self.timestamp}"
 
     def get_algo_param_display(self, p_key: str, default_val: Any) -> str:
-        """Hook method. Allows subclasses to override parameter display formatting."""
+        """Hook to allows subclasses to override parameter display formatting."""
         return str(default_val)
 
-    @abstractmethod
     def add_custom_args(self, parser: argparse.ArgumentParser) -> None:
-        pass
+        return
 
     @abstractmethod
-    def process(self, dataset_path: str, dataset_name: str) -> None:
+    def process(self, dataset_path: str, ds: dict, dataset_name: str) -> None:
         pass
 
     @abstractmethod
     def finalize(self) -> None:
         pass
 
-    @abstractmethod
     def print_table(self) -> None:
-        pass
+        return

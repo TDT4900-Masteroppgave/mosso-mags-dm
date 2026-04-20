@@ -3,7 +3,7 @@ import traceback
 from tabulate import tabulate
 
 from scripts.config import DATASETS, OUTPUT_DIR
-from scripts.utils import setup_logging, download_and_prepare_dataset
+from scripts.utils import setup_logging, download_dataset
 from scripts.runners import get_runner
 
 def analyze_graph(file_path):
@@ -57,7 +57,7 @@ def run_metadata_sync():
             url = ds["url"]
 
             try:
-                raw_path = download_and_prepare_dataset(url, filename, logger)
+                raw_path = download_dataset(url, filename, logger)
                 if not raw_path:
                     continue
 
