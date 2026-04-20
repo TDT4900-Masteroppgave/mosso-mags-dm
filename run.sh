@@ -48,6 +48,9 @@ case $TYPE in
     bayesian)
       python3 -m scripts.benchmarks.bayesian_opt "$@"
         ;;
+    ivb)
+      python3 -m scripts.benchmarks.incremental_vs_batch "$@"
+        ;;
     metadata)
           python3 -m scripts.dataset_metadata "$@"
             ;;

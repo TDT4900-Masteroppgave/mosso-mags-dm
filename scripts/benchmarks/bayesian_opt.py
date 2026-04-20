@@ -22,7 +22,7 @@ class BayesianOptimizationBenchmark(Benchmark):
         parser.add_argument("--n-startup", type=int, default=10, help="Initial random explorations before AI kicks in")
         parser.add_argument("--jobs", type=int, default=1, help="Number of parallel threads to run (-1 uses all CPUs)")
 
-    def process(self, dataset_path: str, dataset_name: str):
+    def process(self, dataset_path: str, ds: dict, dataset_name: str):
         for algo_name, algo_config in self.active_algos.items():
             template = algo_config.get('template', [])
             if not template:

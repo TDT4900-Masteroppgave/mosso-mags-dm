@@ -17,7 +17,7 @@ class CompareBenchmark(Benchmark):
     def add_custom_args(self, parser):
         parser.add_argument("--keep-summaries", action="store_true")
 
-    def process(self, dataset_path: str, dataset_name: str):
+    def process(self, dataset_path: str, ds: dict, dataset_name: str):
         current_result = {"Dataset": dataset_name}
 
         for algo_name, algo_config in self.active_algos.items():

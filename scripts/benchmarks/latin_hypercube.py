@@ -42,7 +42,7 @@ class LHSBenchmark(Benchmark):
             configs.append(cfg)
         return configs
 
-    def process(self, dataset_path: str, dataset_name: str):
+    def process(self, dataset_path: str, ds: dict, dataset_name: str):
 
         for algo_name, algo_config in self.active_algos.items():
             template = algo_config.get('template', [])

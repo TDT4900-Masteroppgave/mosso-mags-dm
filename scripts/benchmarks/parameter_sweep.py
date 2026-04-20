@@ -29,7 +29,7 @@ class ParameterSweepBenchmark(Benchmark):
             return f"SWEEPING {range_str}"
         return default_val
 
-    def process(self, dataset_path: str, dataset_name: str):
+    def process(self, dataset_path: str, ds: dict, dataset_name: str):
         for val in self.sweep_values:
             self.logger.info(f"--- Testing {self.args.param.upper()} = {val} ---")
             current_result = {"Dataset": dataset_name, self.args.param: val}
