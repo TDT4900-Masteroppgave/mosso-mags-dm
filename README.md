@@ -22,11 +22,11 @@ To run the benchmark comparing the original MoSSo against this Hybrid implementa
 
 ### Run on a local graph file
 ```bash
-python3 benchmark/benchmark.py --mode local --file example_graph.txt
+python3 benchmark/compare.py --mode local --file example_graph.txt
 ```
 
 ### Run the full remote dataset suite
 ```bash
-python3 benchmark/benchmark.py --mode remote
+python3 benchmark/compare.py --mode remote
 ```
 

@@ -1,76 +1,240 @@
-import os
-import pandas as pd
-from config import ALGORITHMS, BENCHMARK_DIR, RUNS_DIR
-from utils import setup_logging, setup_directories, build_jars, download_and_prepare_dataset, prepare_dataset, \
-    parse_and_filter_args, get_datasets_to_run, print_benchmark_table
-from run_mosso import run_multiple_mosso
-from plotter import plot_results, plot_runs_variance
+import json
+import argparse
+from abc import ABC, abstractmethod
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any
+import traceback
+import time
+
+from tabulate import tabulate
+
+from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, BENCHMARK_DIR
+from scripts.utils import setup_logging, setup_directories, get_datasets_to_run, download_dataset
+from scripts.runners import get_runner
 
 
-def run_suite(args, datasets_to_run, logger, timestamp):
-    results = []
+class Benchmark(ABC):
+    def __init__(self, benchmark_type: str):
+        self.benchmark_type = benchmark_type
+        self.results: list[Dict[str, Any]] = []
+        self.datasets_to_run = None
+        self.active_algos: dict = {}
 
-    for i, (url, filename) in enumerate(datasets_to_run, 1):
-        dataset_name = filename.replace(".txt", "").replace(".csv", "")
-        path = prepare_dataset(filename, logger) if url == "local" else download_and_prepare_dataset(url, filename,
-                                                                                                     logger)
-        if not path: continue
+        self.args = self._parse_arguments()
 
-        logger.info(f"[{i}/{len(datasets_to_run)}] Benchmarking [{dataset_name}] ({args.runs} runs) ...")
-        current_result = {"Dataset": dataset_name}
-        all_times_dict, all_ratios_dict = {}, {}
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_dir = Path(BENCHMARK_DIR) / self.benchmark_type / self.get_session_name()
+        self.runs_dir = self.session_dir / "runs"
+        self.summaries_dir = self.session_dir / "summarized_graphs"
 
-        for algo_name, algo_config in ALGORITHMS.items():
-            jar_file = f"mosso-{algo_name}.jar"
-            if not os.path.exists(jar_file):
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.summaries_dir.mkdir(parents=True, exist_ok=True)
+
+        log_file = self.session_dir / "execution.log"
+        self.logger = setup_logging(str(log_file))
+
+    def run(self) -> None:
+        """The main execution lifecycle."""
+        start_time = time.time()
+
+        self._run_setup()
+        self._process_datasets()
+        self._handle_results()
+
+        elapsed = time.time() - start_time
+        self.logger.info(f"[*] Total Benchmark Time: {elapsed:.2f} seconds")
+        self.logger.info(f"[*] Artifacts available in: {self.session_dir}")
+
+    def _run_setup(self):
+        self.logger.info("=" * 10 + f"{' SETUP ':^30}" + "=" * 10)
+        try:
+            self.setup()
+            self.print_parameters()
+        except Exception as e:
+            self.logger.error(f"[!] Setup aborted: {e}")
+            self.logger.debug(traceback.format_exc())
+
+    def _process_datasets(self) -> None:
+        self.logger.info("=" * 10 + f"{' PROCESSING ':^30}" + "=" * 10)
+        for i, ds in enumerate(self.datasets_to_run, 1):
+            url = ds["url"]
+            filename = ds["filename"]
+            short_name = ds.get("short_name", filename)
+
+            try:
+                dataset_path = download_dataset(url, filename, self.logger)
+
+                if not dataset_path:
+                    raise RuntimeError(f"Failed to download dataset {filename}.")
+
+                self.logger.info(f"[{i}/{len(self.datasets_to_run)}] Benchmarking [{short_name}] ({self.args.runs} runs) ...")
+                self.process(dataset_path, ds, short_name)
+
+            except Exception as e:
+                self.logger.error(f"[!] Processing aborted for {filename}: {e}")
+                self.logger.debug(traceback.format_exc())
                 continue
 
-            template = algo_config.get('template')
+    def _handle_results(self) -> None:
+        if not self.results:
+            self.logger.warning("[!] No results generated. Nothing to save.")
+            return
+
+        self.logger.info("=" * 10 + f"{' RESULTS ':^30}" + "=" * 10)
+        try:
+            self.print_table()
+            self.finalize()
+        except Exception as e:
+            self.logger.error(f"[!] Error during table printing or plotting: {e}")
+            self.logger.debug(traceback.format_exc())
+            self._emergency_dump()
+
+    def _emergency_dump(self) -> None:
+        """Ultimate fallback: Dump raw dictionaries so hours of compute data are not lost."""
+        fallback_path = Path.cwd() / f"EMERGENCY_DUMP_{self.timestamp}.json"
+        with open(fallback_path, "w", encoding="utf-8") as f:
+            json.dump(self.results, f, indent=4)
+        self.logger.warning(f"[*] Saved raw fallback data to {fallback_path}")
+
+    def _parse_arguments(self) -> argparse.Namespace:
+        """Builds the parser, collects custom args, and parses them."""
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--runs", type=int, default=1)
+        parser.add_argument("--group", choices=["all"] + list(DATASETS.keys()), default="all")
+        parser.add_argument("--algorithm", nargs='+', help="Specific algorithms to run")
+        parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
+        parser.add_argument("--dataset", nargs='+', type=str,
+                            help="Specific dataset(s) to run by short_name (e.g., YT) or filename. Overrides --group.")
+        parser.add_argument("--is-local", action="store_true",
+                            help="Include the local directory code in the benchmark.")
+
+        for p_name, p_data in PARAM_CONFIG.items():
+            parser.add_argument(f"--{p_name}", type=type(p_data["default"]), default=p_data["default"])
+
+        self.add_custom_args(parser)
+        args = parser.parse_args()
+
+        # Configure Active Algorithms
+        if args.algorithm:
+            self.active_algos = {k: v for k, v in ALGORITHMS.items() if k in args.algorithm}
+        else:
+            self.active_algos = {k: v for k, v in ALGORITHMS.items() if k != "local"}
+
+        if args.is_local:
+            self.active_algos["local"] = ALGORITHMS["local"]
+
+        if args.baseline and args.baseline not in ALGORITHMS:
+            print(f"[!] The specified baseline '{args.baseline}' is not in the active algorithms list.")
+            exit(1)
+
+        return args
+
+    def print_parameters(self) -> None:
+        general_args = []
+        for k, v in vars(self.args).items():
+            if k not in PARAM_CONFIG:
+                display_v = ", ".join(map(str, v)) if isinstance(v, list) else v
+                general_args.append([k, display_v])
+
+        self.logger.info("\n[*] General Parameters:")
+        self.logger.info(tabulate(general_args, headers=["Argument", "Value"], tablefmt="simple"))
+
+        for algo_name, algo_config in self.active_algos.items():
+            template = algo_config.get('template', [])
             params = algo_config.get('params', {})
-            resolved_params = {
-                "samples": params.get('samples', args.samples),
-                "escape": params.get('escape', args.escape),
-                "b": params.get('b', args.b),
-                "interval": params.get('interval', args.interval)
-            }
 
-            t_avg, r_avg, t_list, r_list = run_multiple_mosso(
-                jar_file, path, f"{algo_name}_{dataset_name}_{timestamp}",
-                args.runs, not args.keep_summaries, logger, resolved_params, template
-            )
+            if not template:
+                self.logger.info(f"\n[*] Hyperparameters: [{algo_name}] -> (None required)")
+                continue
 
-            if t_avg is not None:
-                current_result[f"Time_{algo_name}"], current_result[f"Ratio_{algo_name}"] = t_avg, r_avg
-                logger.info(f"\t=> {algo_name: <12} Time: {t_avg:.3f}s | Ratio: {r_avg:.5f}")
-                if args.runs > 1:
-                    all_times_dict[algo_name], all_ratios_dict[algo_name] = t_list, r_list
+            algo_data = []
+            for p_key in template:
+                if p_key in params:
+                    algo_data.append([p_key, params[p_key], "FIXED"])
+                else:
+                    base_val = getattr(self.args, p_key, "N/A")
+                    display_val = self.get_algo_param_display(p_key, base_val)
+                    algo_data.append([p_key, display_val, "DYNAMIC"])
 
-        results.append(current_result)
-        if args.runs > 1:
-            plot_runs_variance(f"{dataset_name}_{timestamp}", all_times_dict, all_ratios_dict, RUNS_DIR)
+            self.logger.info(f"[*] Hyperparameters: [{algo_name}]")
+            self.logger.info(tabulate(algo_data, headers=["Param", "Value", "State"], tablefmt="simple"))
 
-    return results
+        self.logger.info(f"\n[*] Datasets to Run ({len(self.datasets_to_run)}):")
+        dataset_table = []
+        for ds in self.datasets_to_run:
+            filename = ds["filename"]
+            short_name = ds.get("short_name", "N/A")
+            meta = ds.get("meta", {})
 
+            nodes = meta.get("nodes", "N/A")
+            edges = meta.get("edges", "N/A")
 
-def main():
-    args = parse_and_filter_args(script_type="benchmark")
-    logger, timestamp = setup_logging("benchmark")
+            disp_nodes = f"{nodes:,}" if isinstance(nodes, int) else nodes
+            disp_edges = f"{edges:,}" if isinstance(edges, int) else edges
 
-    logger.info("=" * 10 + f"{' STAGE 1: SETUP & COMPILATION ':^10}" + "=" * 10)
-    setup_directories()
-    build_jars(args.skip_build, args.local, logger)
+            dataset_table.append([
+                short_name,
+                filename,
+                meta.get("size", "N/A"),
+                disp_nodes,
+                disp_edges,
+                meta.get("avg_degree", "N/A"),
+            ])
 
-    logger.info("=" * 10 + f"{' STAGE 2: PROCESSING ':^10}" + "=" * 10)
-    datasets_to_run = get_datasets_to_run(args)
+        self.logger.info(
+            tabulate(dataset_table, headers=["ID", "Dataset", "Size", "Nodes", "Edges", "Avg Deg"],
+                     tablefmt="simple"))
 
-    results = run_suite(args, datasets_to_run, logger, timestamp)
-    if results:
-        print_benchmark_table(results, logger, title="BENCHMARK SUMMARY", baseline_algo=args.baseline)
-        csv_file = os.path.join(BENCHMARK_DIR, f"results_{timestamp}.csv")
-        pd.DataFrame(results).to_csv(csv_file, index=False)
-        plot_results(csv_file, os.path.join(BENCHMARK_DIR, f"comparison_{timestamp}.pdf"), logger)
-        logger.info(f"[*] Artifacts saved to: {BENCHMARK_DIR}")
+    def execute_runner(self, algo_name: str, algo_config: dict, dataset_path: str, dataset_name: str,
+                       resolved_params: dict):
+        """A helper method to standardize runner execution across subclasses."""
+        runner = get_runner(algo_name, self.logger, str(self.session_dir))
 
+        if not runner.binary_exists():
+            self.logger.warning(f"[!] Binary not found for {algo_name}. Skipping.")
+            return None, None, None, None
 
-if __name__ == "__main__":
-    main()
+        template = algo_config.get('template', [])
+
+        return runner.run_multiple(
+            dataset_path=dataset_path,
+            base_output_name=f"{algo_name}_{dataset_name}_{self.timestamp}",
+            runs=self.args.runs,
+            parameters=resolved_params,
+            template=template
+        )
+
+    def setup(self) -> None:
+        self.datasets_to_run = get_datasets_to_run(self.args)
+        setup_directories()
+
+        self.logger.info(f"[*] Output Directory: {self.session_dir}")
+        self.logger.info("[*] Compiling Configured Algorithms:")
+
+        for algo_name, config in self.active_algos.items():
+            runner = get_runner(algo_name, self.logger, str(self.session_dir))
+            runner.build()
+
+    def get_session_name(self) -> str:
+        """Hook to allow subclasses to name output folder"""
+        return f"run_{self.timestamp}"
+
+    def get_algo_param_display(self, p_key: str, default_val: Any) -> str:
+        """Hook to allows subclasses to override parameter display formatting."""
+        return str(default_val)
+
+    def add_custom_args(self, parser: argparse.ArgumentParser) -> None:
+        return
+
+    @abstractmethod
+    def process(self, dataset_path: str, ds: dict, dataset_name: str) -> None:
+        pass
+
+    @abstractmethod
+    def finalize(self) -> None:
+        pass
+
+    def print_table(self) -> None:
+        return
