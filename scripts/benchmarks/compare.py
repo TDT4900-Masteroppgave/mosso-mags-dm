@@ -80,9 +80,17 @@ class CompareBenchmark(Benchmark):
         with open(os.path.join(self.session_dir, "table_results.txt"), "w") as f:
             f.write(table_str)
 
-        plot_results(csv_file, os.path.join(self.session_dir, "compare_plot.pdf"), self.logger)
         if self.args.runs > 1:
             plot_runs_variance("runs_variance_plot", self.all_times_dict, self.all_ratios_dict, self.session_dir)
+
+        plot_df = df.copy()
+        std_columns = [col for col in plot_df.columns if "std_" in col]
+        plot_df = plot_df.drop(columns=std_columns)
+
+        clean_csv = os.path.join(self.session_dir, "results_no_std.csv")
+        plot_df.to_csv(clean_csv, index=False)
+
+        plot_results(clean_csv, os.path.join(self.session_dir, "compare_plot.pdf"), self.logger)
 
 
 if __name__ == "__main__":
