@@ -1,105 +1,53 @@
-import os
-import shutil
 import subprocess
 import urllib.request
 import gzip
 import glob
-from config import *
+
+import pandas as pd
+
+from scripts.config import *
 import logging
 import sys
-from datetime import datetime
-from config import LOG_DIR
+import re
 
 def get_fastutil_path():
     fastutil_files = glob.glob("fastutil-*.jar")
     return fastutil_files[0] if fastutil_files else "fastutil-missing.jar"
 
+
 def setup_directories():
-    for d in [DATASETS_DIR, OUTPUT_DIR, BENCHMARK_DIR, EXTERNAL_DIR, RUNS_DIR, SUMMARIZED_DIR, SWEEP_DIR, LOG_DIR]:
+    for d in [DATASETS_DIR, OUTPUT_DIR, BENCHMARK_DIR, VERSIONS_DIR]:
         os.makedirs(d, exist_ok=True)
 
-def build_jars(skip_build, logger):
-    if skip_build:
-        return
 
-    fastutil = get_fastutil_path()
-    if not os.path.exists(fastutil):
-        logger.error(f"[!] Error: {fastutil} missing. Download it to root first.")
-        exit(1)
-
-    logger.debug("Compiling Original MoSSo...")
-    if not os.path.exists(BASELINE_DIR):
-        subprocess.run(["git", "clone", "-q", ORIGINAL_REPO_URL, BASELINE_DIR], check=True)
-
-    shutil.copy(fastutil, os.path.join(BASELINE_DIR, fastutil))
-
-    subprocess.run(["bash", "compile.sh"], cwd=BASELINE_DIR, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    shutil.move(os.path.join(BASELINE_DIR, "mosso-1.0.jar"), JAR_ORIGINAL)
-
-    logger.debug("Compiling Hybrid MoSSo...")
-    subprocess.run(["bash", "compile.sh"], check=True, stdout=subprocess.DEVNULL)
-    shutil.move("mosso-1.0.jar", JAR_HYBRID)
-    logger.info("[*] Java compilation successful.")
-
-def prepare_dataset(filepath, logger):
-    filename = os.path.basename(filepath)
-    prepared_path = os.path.join(DATASETS_DIR, f"prepared_{filename}")
-    if os.path.exists(prepared_path):
-        return prepared_path
-
-    logger.debug(f"Cleaning {filename} (Undirected, No Self-Loops, No Multi-Edges)...")
-    seen_edges = set()
-
+def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch: str, logger):
     try:
-        with open(filepath, 'r') as f_in, open(prepared_path, 'w') as f_out:
-            for line in f_in:
-                if line.startswith('#'): continue
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    try:
-                        u, v = int(parts[0]), int(parts[1])
-                        if u == v: continue
-                        edge = tuple(sorted((u, v)))
-                        if edge in seen_edges: continue
-                        seen_edges.add(edge)
-                        f_out.write(f"{u}\t{v}\t1\n")
-                    except ValueError:
-                        continue
-        return prepared_path
+        if not os.path.exists(target_dir):
+            logger.info(f"    -> [{algo_name}] Target directory not found. Cloning fresh...")
+            subprocess.run(["git", "clone", "-q", "--branch", branch, "--single-branch", repo_url, target_dir],
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        else:
+            logger.info(f"    -> [{algo_name}] Target directory exists. Pulling latest updates...")
+            subprocess.run(["git", "pull", "-q"], cwd=target_dir,
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    except subprocess.CalledProcessError as e:
+        raise e
 
-    except Exception as e:
-        logger.error(f"[!] Failed to prepare local dataset {filename}: {e}")
-        if os.path.exists(prepared_path):
-            os.remove(prepared_path)
-        return None
 
-def download_and_prepare_dataset(url, filename, logger):
+def download_dataset(url, filename, logger):
     gz_path = os.path.join(DATASETS_DIR, filename + ".gz")
     txt_path = os.path.join(DATASETS_DIR, filename)
 
     if not os.path.exists(txt_path):
         try:
             if not os.path.exists(gz_path):
-                logger.info(f"[*] Downloading {filename}...")
+                logger.info(f"[*] Downloading {filename}")
                 urllib.request.urlretrieve(url, gz_path)
 
             logger.debug(f"Extracting and cleaning {filename}...")
-            seen_edges = set()
             with gzip.open(gz_path, 'rt') as f_in, open(txt_path, 'w') as f_out:
                 for line in f_in:
-                    if line.startswith('#'): continue
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        try:
-                            u, v = int(parts[0]), int(parts[1])
-                            if u == v: continue
-                            edge = tuple(sorted((u, v)))
-                            if edge in seen_edges: continue
-                            seen_edges.add(edge)
-                            f_out.write(f"{u}\t{v}\t1\n")
-                        except ValueError:
-                            continue
-
+                    f_out.write(line)
             os.remove(gz_path)
 
         except Exception as e:
@@ -110,22 +58,17 @@ def download_and_prepare_dataset(url, filename, logger):
 
     return txt_path
 
-def setup_logging(run_type="benchmark"):
-    os.makedirs(LOG_DIR, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") # The unique ID
-    log_file = os.path.join(LOG_DIR, f"{run_type}_{timestamp}.log")
 
-    logger = logging.getLogger("MoSSo")
+def setup_logging(log_file_path):
+    logger = logging.getLogger("Benchmark")
     logger.setLevel(logging.DEBUG)
     logger.handlers = []
 
-    # Console Handler: Clean, concise output
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
     ch.setFormatter(logging.Formatter('%(message)s'))
 
-    # File Handler: Verbose output for debugging
-    fh = logging.FileHandler(log_file)
+    fh = logging.FileHandler(log_file_path)
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
@@ -134,11 +77,92 @@ def setup_logging(run_type="benchmark"):
 
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
-            logger.warning("\n[!] Execution interrupted by user (KeyboardInterrupt).")
+            logger.warning("[!] Execution interrupted by user (KeyboardInterrupt).")
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
         logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
     sys.excepthook = handle_exception
 
-    return logger, log_file, timestamp
+    return logger
+
+
+def format_dataframe_with_baseline(df, strategies, baseline_algo=None):
+    """Helper function to calculate inline relative performance factors and variance."""
+    display_df = df.copy()
+
+    for strat in strategies:
+        time_col, ratio_col = f"Time_{strat}", f"Ratio_{strat}"
+        t_std_col, r_std_col = f"Time_std_{strat}", f"Ratio_std_{strat}"
+
+        formatted_times, formatted_ratios = [], []
+
+        for _, row in df.iterrows():
+            t_val, r_val = row.get(time_col), row.get(ratio_col)
+            t_std = row.get(t_std_col, 0.0)
+            r_std = row.get(r_std_col, 0.0)
+
+            if pd.notna(t_val):
+                t_str = f"{t_val:.3f}s ± {t_std:.3f}s" if t_std > 0 else f"{t_val:.3f}s"
+            else:
+                t_str = "N/A"
+
+            if pd.notna(r_val):
+                r_str = f"{r_val:.5f} ± {r_std:.5f}" if r_std > 0 else f"{r_val:.5f}"
+            else:
+                r_str = "N/A"
+
+            if baseline_algo and baseline_algo in strategies and strat != baseline_algo:
+                t_base = row.get(f"Time_{baseline_algo}")
+                r_base = row.get(f"Ratio_{baseline_algo}")
+
+                if pd.notna(t_val) and pd.notna(t_base) and t_val > 0:
+                    speedup = t_base / t_val
+                    t_str += f" ({speedup:.2f}x)"
+
+                if pd.notna(r_val) and pd.notna(r_base) and r_base > 0:
+                    ratio_mult = r_val / r_base
+                    r_str += f" ({ratio_mult:.2f}x)"
+
+            formatted_times.append(t_str)
+            formatted_ratios.append(r_str)
+
+        display_df[time_col] = formatted_times
+        display_df[ratio_col] = formatted_ratios
+
+    std_cols_to_drop = [c for c in display_df.columns if "_std_" in c]
+    display_df = display_df.drop(columns=std_cols_to_drop)
+
+    return display_df
+
+
+def get_datasets_to_run(args):
+    datasets = []
+
+    if getattr(args, 'dataset', None):
+        # Flatten all datasets from config.py into a single list
+        all_available_datasets = []
+        for group in DATASETS.values():
+            all_available_datasets.extend(group)
+
+        # Match requested datasets by short_name (e.g., 'YT') or filename
+        for req in args.dataset:
+            matched = next((d for d in all_available_datasets if d['short_name'] == req or d['filename'] == req), None)
+            if matched:
+                if matched not in datasets:  # Prevent duplicates
+                    datasets.append(matched)
+            else:
+                print(f"[!] Warning: Dataset '{req}' not found in configuration. Skipping.")
+
+        if not datasets:
+            raise ValueError("No valid datasets found based on your --dataset argument.")
+
+    else:
+        if args.group == "all":
+            for group_datasets in DATASETS.values():
+                datasets.extend(group_datasets)
+        else:
+            datasets = DATASETS.get(args.group, [])
+            if not datasets:
+                raise ValueError(f"Dataset group '{args.group}' not found in config.")
+    return datasets

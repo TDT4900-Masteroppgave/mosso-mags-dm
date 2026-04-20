@@ -1,151 +1,240 @@
+import json
 import argparse
-import pandas as pd
-from config import *
-from utils import setup_logging, setup_directories, build_jars, download_and_prepare_dataset, prepare_dataset
-from run_mosso import run_multiple_mosso
-from plotter import plot_results, plot_runs_variance
+from abc import ABC, abstractmethod
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any
+import traceback
+import time
 
-def print_summary_table(results, logger):
-    if not results: return
-    df = pd.DataFrame(results)
+from tabulate import tabulate
 
-    avg_row = df.mean(numeric_only=True).to_dict()
-    avg_row['Dataset'] = 'AVERAGE'
-    df = pd.concat([df, pd.DataFrame([avg_row])], ignore_index=True)
+from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, BENCHMARK_DIR
+from scripts.utils import setup_logging, setup_directories, get_datasets_to_run, download_dataset
+from scripts.runners import get_runner
 
-    df['Time_Diff_%'] = ((df['Time_Original'] - df['Time_Hybrid']) / df['Time_Original']) * 100
-    df['Ratio_Diff_%'] = ((df['Ratio_Hybrid'] - df['Ratio_Original']) / df['Ratio_Original']) * 100
 
-    header = f"| {'Dataset':<18} | {'Orig Time(s)':<12} | {'Hyb Time(s)':<12} | {'Time Diff':<10} | {'Orig Ratio':<10} | {'Hyb Ratio':<10} | {'Ratio Diff':<10} |"
-    sep = "-" * len(header)
+class Benchmark(ABC):
+    def __init__(self, benchmark_type: str):
+        self.benchmark_type = benchmark_type
+        self.results: list[Dict[str, Any]] = []
+        self.datasets_to_run = None
+        self.active_algos: dict = {}
 
-    logger.info(f"{sep}")
-    logger.info(f"| {'FINAL BENCHMARK SUMMARY':^96} |")
-    logger.info(f"{sep}")
-    logger.info(header)
-    logger.info(sep)
+        self.args = self._parse_arguments()
 
-    for _, row in df.iterrows():
-        dataset = row['Dataset'][:18]
-        t_o, t_h = f"{row['Time_Original']:.3f}", f"{row['Time_Hybrid']:.3f}"
-        t_d = f"{row['Time_Diff_%']:+.2f}%"
-        r_o, r_h = f"{row['Ratio_Original']:.5f}", f"{row['Ratio_Hybrid']:.5f}"
-        r_d = f"{row['Ratio_Diff_%']:+.4f}%"
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_dir = Path(BENCHMARK_DIR) / self.benchmark_type / self.get_session_name()
+        self.runs_dir = self.session_dir / "runs"
+        self.summaries_dir = self.session_dir / "summarized_graphs"
 
-        if dataset == 'AVERAGE': logger.info(sep)
-        logger.info(f"| {dataset:<18} | {t_o:<12} | {t_h:<12} | {t_d:<10} | {r_o:<10} | {r_h:<10} | {r_d:<10} |")
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.summaries_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"{sep}")
+        log_file = self.session_dir / "execution.log"
+        self.logger = setup_logging(str(log_file))
 
-def run_suite(args, file_path, logger, timestamp):
-    results = []
-    datasets_to_run = [("local", file_path)] if file_path else []
+    def run(self) -> None:
+        """The main execution lifecycle."""
+        start_time = time.time()
 
-    if not file_path:
-        if args.group == "all":
-            for cat, data_list in DATASETS.items():
-                for url, filename in data_list:
-                    datasets_to_run.append((url, filename))
+        self._run_setup()
+        self._process_datasets()
+        self._handle_results()
+
+        elapsed = time.time() - start_time
+        self.logger.info(f"[*] Total Benchmark Time: {elapsed:.2f} seconds")
+        self.logger.info(f"[*] Artifacts available in: {self.session_dir}")
+
+    def _run_setup(self):
+        self.logger.info("=" * 10 + f"{' SETUP ':^30}" + "=" * 10)
+        try:
+            self.setup()
+            self.print_parameters()
+        except Exception as e:
+            self.logger.error(f"[!] Setup aborted: {e}")
+            self.logger.debug(traceback.format_exc())
+
+    def _process_datasets(self) -> None:
+        self.logger.info("=" * 10 + f"{' PROCESSING ':^30}" + "=" * 10)
+        for i, ds in enumerate(self.datasets_to_run, 1):
+            url = ds["url"]
+            filename = ds["filename"]
+            short_name = ds.get("short_name", filename)
+
+            try:
+                dataset_path = download_dataset(url, filename, self.logger)
+
+                if not dataset_path:
+                    raise RuntimeError(f"Failed to download dataset {filename}.")
+
+                self.logger.info(f"[{i}/{len(self.datasets_to_run)}] Benchmarking [{short_name}] ({self.args.runs} runs) ...")
+                self.process(dataset_path, ds, short_name)
+
+            except Exception as e:
+                self.logger.error(f"[!] Processing aborted for {filename}: {e}")
+                self.logger.debug(traceback.format_exc())
+                continue
+
+    def _handle_results(self) -> None:
+        if not self.results:
+            self.logger.warning("[!] No results generated. Nothing to save.")
+            return
+
+        self.logger.info("=" * 10 + f"{' RESULTS ':^30}" + "=" * 10)
+        try:
+            self.print_table()
+            self.finalize()
+        except Exception as e:
+            self.logger.error(f"[!] Error during table printing or plotting: {e}")
+            self.logger.debug(traceback.format_exc())
+            self._emergency_dump()
+
+    def _emergency_dump(self) -> None:
+        """Ultimate fallback: Dump raw dictionaries so hours of compute data are not lost."""
+        fallback_path = Path.cwd() / f"EMERGENCY_DUMP_{self.timestamp}.json"
+        with open(fallback_path, "w", encoding="utf-8") as f:
+            json.dump(self.results, f, indent=4)
+        self.logger.warning(f"[*] Saved raw fallback data to {fallback_path}")
+
+    def _parse_arguments(self) -> argparse.Namespace:
+        """Builds the parser, collects custom args, and parses them."""
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--runs", type=int, default=1)
+        parser.add_argument("--group", choices=["all"] + list(DATASETS.keys()), default="all")
+        parser.add_argument("--algorithm", nargs='+', help="Specific algorithms to run")
+        parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
+        parser.add_argument("--dataset", nargs='+', type=str,
+                            help="Specific dataset(s) to run by short_name (e.g., YT) or filename. Overrides --group.")
+        parser.add_argument("--is-local", action="store_true",
+                            help="Include the local directory code in the benchmark.")
+
+        for p_name, p_data in PARAM_CONFIG.items():
+            parser.add_argument(f"--{p_name}", type=type(p_data["default"]), default=p_data["default"])
+
+        self.add_custom_args(parser)
+        args = parser.parse_args()
+
+        # Configure Active Algorithms
+        if args.algorithm:
+            self.active_algos = {k: v for k, v in ALGORITHMS.items() if k in args.algorithm}
         else:
-            for url, filename in DATASETS[args.group]:
-                datasets_to_run.append((url, filename))
+            self.active_algos = {k: v for k, v in ALGORITHMS.items() if k != "local"}
 
-    total_datasets = len(datasets_to_run)
+        if args.is_local:
+            self.active_algos["local"] = ALGORITHMS["local"]
 
-    # ==========================================
-    # STAGE 2: PROCESSING
-    # ==========================================
-    logger.info("="*60)
-    logger.info(f"{'STAGE 2: BENCHMARK PROCESSING':^60}")
-    logger.info("="*60)
+        if args.baseline and args.baseline not in ALGORITHMS:
+            print(f"[!] The specified baseline '{args.baseline}' is not in the active algorithms list.")
+            exit(1)
 
-    for i, (url, filename) in enumerate(datasets_to_run, 1):
-        dataset_name = filename.replace(".txt", "").replace(".csv", "")
+        return args
 
-        if url == "local":
-            path = prepare_dataset(filename, logger)
-        else:
-            path = download_and_prepare_dataset(url, filename, logger)
+    def print_parameters(self) -> None:
+        general_args = []
+        for k, v in vars(self.args).items():
+            if k not in PARAM_CONFIG:
+                display_v = ", ".join(map(str, v)) if isinstance(v, list) else v
+                general_args.append([k, display_v])
 
-        if not path:
-            logger.warning(f"[{i}/{total_datasets}] [!] Skipping {dataset_name} because preparation failed.")
-            continue
+        self.logger.info("\n[*] General Parameters:")
+        self.logger.info(tabulate(general_args, headers=["Argument", "Value"], tablefmt="simple"))
 
-        logger.info(f"[{i}/{total_datasets}] Benchmarking [{dataset_name}] ({args.runs} runs) ...")
+        for algo_name, algo_config in self.active_algos.items():
+            template = algo_config.get('template', [])
+            params = algo_config.get('params', {})
 
-        logger.debug("   Running Original...")
-        t1_avg, r1_avg, t1_list, r1_list = run_multiple_mosso(
-            JAR_ORIGINAL, path, f"orig_{dataset_name}_{timestamp}", 120, 3, args.interval, args.runs, not args.keep_summaries, logger)
+            if not template:
+                self.logger.info(f"\n[*] Hyperparameters: [{algo_name}] -> (None required)")
+                continue
 
-        logger.debug("   Running Hybrid...")
-        t2_avg, r2_avg, t2_list, r2_list = run_multiple_mosso(
-            JAR_HYBRID, path, f"hyb_{dataset_name}_{timestamp}", args.samples, args.escape, args.interval, args.runs, not args.keep_summaries, logger, args.b)
+            algo_data = []
+            for p_key in template:
+                if p_key in params:
+                    algo_data.append([p_key, params[p_key], "FIXED"])
+                else:
+                    base_val = getattr(self.args, p_key, "N/A")
+                    display_val = self.get_algo_param_display(p_key, base_val)
+                    algo_data.append([p_key, display_val, "DYNAMIC"])
 
-        if None in (t1_avg, t2_avg):
-            logger.warning(f"   [!] Skipped {dataset_name} due to execution failure.")
-            continue
+            self.logger.info(f"[*] Hyperparameters: [{algo_name}]")
+            self.logger.info(tabulate(algo_data, headers=["Param", "Value", "State"], tablefmt="simple"))
 
-        t_diff = ((t1_avg - t2_avg) / t1_avg) * 100
-        r_diff = ((r2_avg - r1_avg) / r1_avg) * 100
-        logger.info(f"   => Original: {t1_avg:.3f}s / {r1_avg:.5f} | Hybrid: {t2_avg:.3f}s / {r2_avg:.5f}")
-        logger.info(f"   => Diff: Time {t_diff:+.2f}% | Ratio {r_diff:+.4f}%")
+        self.logger.info(f"\n[*] Datasets to Run ({len(self.datasets_to_run)}):")
+        dataset_table = []
+        for ds in self.datasets_to_run:
+            filename = ds["filename"]
+            short_name = ds.get("short_name", "N/A")
+            meta = ds.get("meta", {})
 
-        results.append({
-            "Dataset": dataset_name,
-            "Time_Original": t1_avg, "Time_Hybrid": t2_avg,
-            "Ratio_Original": r1_avg, "Ratio_Hybrid": r2_avg
-        })
+            nodes = meta.get("nodes", "N/A")
+            edges = meta.get("edges", "N/A")
 
-        if args.runs > 1:
-            plot_runs_variance(f"{dataset_name}_{timestamp}", t1_list, t2_list, r1_list, r2_list, RUNS_DIR, logger)
+            disp_nodes = f"{nodes:,}" if isinstance(nodes, int) else nodes
+            disp_edges = f"{edges:,}" if isinstance(edges, int) else edges
 
-    # ==========================================
-    # STAGE 3: RESULTS
-    # ==========================================
-    logger.info("="*60)
-    logger.info(f"{'STAGE 3: RESULTS & ARTIFACTS':^60}")
-    logger.info("="*60)
+            dataset_table.append([
+                short_name,
+                filename,
+                meta.get("size", "N/A"),
+                disp_nodes,
+                disp_edges,
+                meta.get("avg_degree", "N/A"),
+            ])
 
-    print_summary_table(results, logger)
+        self.logger.info(
+            tabulate(dataset_table, headers=["ID", "Dataset", "Size", "Nodes", "Edges", "Avg Deg"],
+                     tablefmt="simple"))
 
-    if results:
-        csv_file = os.path.join(BENCHMARK_DIR, f"results_{timestamp}.csv")
-        pd.DataFrame(results).to_csv(csv_file, index=False)
+    def execute_runner(self, algo_name: str, algo_config: dict, dataset_path: str, dataset_name: str,
+                       resolved_params: dict):
+        """A helper method to standardize runner execution across subclasses."""
+        runner = get_runner(algo_name, self.logger, str(self.session_dir))
 
-        plot_file = os.path.join(BENCHMARK_DIR, f"comparison_{timestamp}.pdf")
-        plot_results(csv_file, plot_file, logger)
+        if not runner.binary_exists():
+            self.logger.warning(f"[!] Binary not found for {algo_name}. Skipping.")
+            return None, None, None, None
 
-        logger.info(f"[*] Artifacts successfully saved to: {BENCHMARK_DIR}")
+        template = algo_config.get('template', [])
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--file", type=str, help="Specific local graph file.")
-    parser.add_argument("--skip-build", action="store_true")
-    parser.add_argument("--samples", type=int, default=120)
-    parser.add_argument("--escape", type=int, default=3)
-    parser.add_argument("--b", type=int, default=5)
-    parser.add_argument("--interval", type=int, default=1000)
-    parser.add_argument("--runs", type=int, default=1)
-    parser.add_argument("--keep-summaries", action="store_true")
-    parser.add_argument("--group", choices=["all"] + list(DATASETS.keys()), default="all",
-                        help="Which dataset group to run from config.py")
+        return runner.run_multiple(
+            dataset_path=dataset_path,
+            base_output_name=f"{algo_name}_{dataset_name}_{self.timestamp}",
+            runs=self.args.runs,
+            parameters=resolved_params,
+            template=template
+        )
 
-    args = parser.parse_args()
+    def setup(self) -> None:
+        self.datasets_to_run = get_datasets_to_run(self.args)
+        setup_directories()
 
-    logger, log_file, timestamp = setup_logging("benchmark")
+        self.logger.info(f"[*] Output Directory: {self.session_dir}")
+        self.logger.info("[*] Compiling Configured Algorithms:")
 
-    # ==========================================
-    # STAGE 1: SETUP
-    # ==========================================
-    logger.info("="*60)
-    logger.info(f"{'STAGE 1: SETUP & COMPILATION':^60}")
-    logger.info("="*60)
-    logger.info(f"[*] Log initialized: {log_file}")
+        for algo_name, config in self.active_algos.items():
+            runner = get_runner(algo_name, self.logger, str(self.session_dir))
+            runner.build()
 
-    setup_directories()
-    build_jars(args.skip_build, logger)
+    def get_session_name(self) -> str:
+        """Hook to allow subclasses to name output folder"""
+        return f"run_{self.timestamp}"
 
-    run_suite(args, args.file, logger, timestamp)
+    def get_algo_param_display(self, p_key: str, default_val: Any) -> str:
+        """Hook to allows subclasses to override parameter display formatting."""
+        return str(default_val)
 
-if __name__ == "__main__":
-    main()
+    def add_custom_args(self, parser: argparse.ArgumentParser) -> None:
+        return
+
+    @abstractmethod
+    def process(self, dataset_path: str, ds: dict, dataset_name: str) -> None:
+        pass
+
+    @abstractmethod
+    def finalize(self) -> None:
+        pass
+
+    def print_table(self) -> None:
+        return
