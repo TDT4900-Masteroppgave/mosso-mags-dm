@@ -1,32 +1,94 @@
-# Hybrid MoSSo: Lossless Graph Summarization (MoSSo + Mags-DM)
+# Hybrid MoSSo
 
-**Hybrid MoSSo** is an incremental algorithm for lossless graph summarization, developed as part of a Master's thesis at
-NTNU.
+Incremental lossless graph summarization algorithm developed as part of a Master's thesis at NTNU.
 
-This project represents a complete fusion of two state-of-the-art approaches: it leverages the dynamic, exact-cost
-evaluation engine of the original **MoSSo (KDD '20)** and upgrades it by implementing the full suite of **Mags-DM**
-optimization principles.
-
-### Key Features
-
-* 🚀 **Full Mags-DM Integration:** A complete implementation of Mags-DM principles inside an incremental environment.
-* ⚡ **Dynamic & Incremental:** Processes graph streams (insertions/deletions) in near-constant time.
-* 📊 **Automated Benchmarking Suite:** A fully parameterized Python pipeline to seamlessly download
-  datasets, compile Java code, and generate comparative performance plots against the original KDD '20 baseline.
+This project fuses the exact-cost evaluation engine of **MoSSo (KDD '20)** with the optimization principles of **Mags-DM**, enabling dynamic graph stream processing (vertex/edge insertions and deletions) with competitive compression performance.
 
 ---
 
-## Benchmarking
+## Requirements
 
-To run the benchmark comparing the original MoSSo against this Hybrid implementation:
+- Java 11+
+- Python 3.8+
 
-### Run on a local graph file
+---
+
+## Setup
+
+Compile the Java source:
+
 ```bash
-python3 benchmark/compare.py --mode local --file example_graph.txt
+./compile.sh
 ```
 
-### Run the full remote dataset suite
+`run.sh` handles the Python virtual environment and dependencies automatically on first run.
+
+---
+
+## Usage
+
+### Compare algorithms on a local graph file
+
 ```bash
-python3 benchmark/compare.py --mode remote
+./run.sh --type compare --file example_graph.txt
 ```
 
+### Compare algorithms on remote datasets
+
+```bash
+./run.sh --type compare
+```
+
+### Incremental vs. batch comparison
+
+```bash
+./run.sh --type ivb
+```
+
+### Parameter optimization
+
+```bash
+# Bayesian optimization
+./run.sh --type bayesian --methods mags
+
+# Latin Hypercube Sampling
+./run.sh --type lhs --methods mags
+
+# Grid sweep
+./run.sh --type sweep --methods mags
+```
+
+### Dataset metadata
+
+```bash
+./run.sh --type metadata
+```
+
+---
+
+## Project Structure
+
+```
+.
+├── src/                  # Java source (MoSSo algorithm variants)
+├── scripts/
+│   ├── benchmarks/
+│   │   ├── compare.py              # Head-to-head algorithm comparison
+│   │   ├── incremental_vs_batch.py # Incremental vs. batch fairness test
+│   │   ├── parameter_sweep.py      # Grid search
+│   │   ├── latin_hypercube.py      # LHS parameter sampling
+│   │   └── bayesian_opt.py         # Bayesian hyperparameter optimization
+│   └── dataset_metadata.py
+├── datasets/             # Graph datasets
+├── output/               # Generated plots and results
+├── compile.sh            # Java build script
+├── run.sh                # Unified benchmark runner
+└── requirements.txt
+```
+
+---
+
+## References
+
+- **MoSSo:** Shin et al., *Graph Summarization with Latent Variable Probabilistic Models*, KDD 2020.
+- **Mags-DM:** Batch-based graph summarization with divide-and-merge strategies.
