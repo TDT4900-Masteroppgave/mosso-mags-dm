@@ -26,7 +26,7 @@ ALGORITHMS = {
     "kdd20-mosso": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
-        "params" : {"c": 120, "e": 3},
+        "params" : {"c": 234, "e": 2},
         "type": "mosso",
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
@@ -77,7 +77,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "feature/dividing-strategy",
         "type": "mosso",
-        "template": ["e", "c",  "interval"],
+        "template": ["e", "c",  "interval", "cap"],
         "binary_file": "mosso-strat_div.jar",
     },
     "fix_testing_nodes": {
@@ -114,6 +114,7 @@ DATASETS = {
                 "edges": 53381,
                 "size": "0.66 MB",
                 "avg_degree": 4.03,
+                "density": 1.523215e-04,
             },
         },
         {
@@ -125,6 +126,7 @@ DATASETS = {
                 "edges": 183831,
                 "size": "2.11 MB",
                 "avg_degree": 10.02,
+                "density": 2.730976e-04,
             },
         },
         {
@@ -136,6 +138,7 @@ DATASETS = {
                 "edges": 214078,
                 "size": "2.59 MB",
                 "avg_degree": 7.35,
+                "density": 1.262832e-04,
             },
         },
         {
@@ -147,6 +150,7 @@ DATASETS = {
                 "edges": 364481,
                 "size": "4.52 MB",
                 "avg_degree": 2.75,
+                "density": 1.037971e-05,
             },
         },
         {
@@ -158,6 +162,7 @@ DATASETS = {
                 "edges": 504230,
                 "size": "6.18 MB",
                 "avg_degree": 12.27,
+                "density": 1.493683e-04,
             },
         },
         {
@@ -169,6 +174,7 @@ DATASETS = {
                 "edges": 1049866,
                 "size": "15.29 MB",
                 "avg_degree": 6.62,
+                "density": 2.088467e-05,
             },
         }
     ],

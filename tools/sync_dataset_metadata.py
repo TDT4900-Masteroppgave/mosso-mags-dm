@@ -25,33 +25,31 @@ def analyze_graph(file_path):
                 edge_count += 1
 
     num_nodes = len(nodes)
+
     # Undirected Average Degree = (2 * Edges) / Nodes
     avg_degree = (2 * edge_count) / num_nodes if num_nodes > 0 else 0
+
+    # Undirected Density = (2 * Edges) / (Nodes * (Nodes - 1))
+    density = (2 * edge_count) / (num_nodes * (num_nodes - 1)) if num_nodes > 1 else 0
 
     return {
         "nodes": num_nodes,
         "edges": edge_count,
         "avg_deg": round(avg_degree, 2),
+        "density": density,
         "size": f"{file_size_bytes / (1024*1024):.2f} MB"
     }
 
 def run_metadata_sync():
     logger = setup_logging(os.path.join(OUTPUT_DIR, "metadata_sync.log"))
-    logger.info("="*10 + " CLEANED DATASET METADATA SYNCHRONIZER " + "="*10)
+    logger.info("="*10 + " CLEANED DATASET SYNC " + "="*10)
 
-
-    temp_session = "metadata_temp"
-    try:
-        runner = get_runner("kdd20-mosso", logger, temp_session)
-    except Exception as e:
-        logger.error(f"[!] Could not initialize runner for cleaning: {e}")
-        return
+    runner = get_runner("kdd20-mosso", logger, OUTPUT_DIR)
+    runner.build()
 
     all_results = []
 
     for group_name, dataset_list in DATASETS.items():
-        logger.info(f"\n[*] Processing Group: {group_name.upper()}")
-
         for ds in dataset_list:
             filename = ds["filename"]
             url = ds["url"]
@@ -72,7 +70,8 @@ def run_metadata_sync():
                     stats['size'],
                     f"{stats['nodes']:,}",
                     f"{stats['edges']:,}",
-                    stats['avg_deg']
+                    stats['avg_deg'],
+                    f"{stats['density']:.6e}"  # Formatted to scientific notation
                 ])
 
                 print(f"\n# --- Cleaned Metadata for {filename} ---")
@@ -81,6 +80,7 @@ def run_metadata_sync():
                 print(f"    \"edges\": {stats['edges']},")
                 print(f"    \"size\": \"{stats['size']}\",")
                 print(f"    \"avg_degree\": {stats['avg_deg']},")
+                print(f"    \"density\": {stats['density']:.6e}")
                 print(f"}},")
 
             except Exception as e:
@@ -88,7 +88,7 @@ def run_metadata_sync():
                 logger.debug(traceback.format_exc())
 
     print("\n\n" + "="*20 + " CLEANED GLOBAL SUMMARY " + "="*20)
-    print(tabulate(all_results, headers=["Dataset", "Clean Size", "Clean Nodes", "Clean Edges", "Avg Deg"], tablefmt="grid"))
+    print(tabulate(all_results, headers=["Dataset", "Clean Size", "Clean Nodes", "Clean Edges", "Avg Deg", "Density"], tablefmt="grid"))
 
 if __name__ == "__main__":
     run_metadata_sync()
