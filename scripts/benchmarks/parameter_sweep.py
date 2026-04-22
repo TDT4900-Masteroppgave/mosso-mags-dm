@@ -4,8 +4,8 @@ from tabulate import tabulate
 
 from scripts.config import PARAM_CONFIG
 from scripts.utils import format_dataframe_with_baseline
-from scripts.plotter import plot_parameter_analysis
 from scripts.benchmark import Benchmark
+import scripts.db as db
 
 
 class ParameterSweepBenchmark(Benchmark):
@@ -35,15 +35,9 @@ class ParameterSweepBenchmark(Benchmark):
             current_result = {"Dataset": dataset_name, self.args.param: val}
 
             for algo_name, algo_config in self.active_algos.items():
-                params = algo_config.get('params', {})
-                resolved_params = {
-                    "interval": params.get('interval', self.args.interval)
-                }
-                for p_key in PARAM_CONFIG.keys():
-                    current_fallback = val if self.args.param == p_key else getattr(self.args, p_key)
-                    resolved_params[p_key] = params.get(p_key, current_fallback)
+                resolved_params = self._resolve_algo_params(algo_config, {self.args.param: val})
 
-                t, r, _, _ = self.execute_runner(
+                t, r, _, _, _ = self.execute_runner(
                     algo_name=algo_name,
                     algo_config=algo_config,
                     dataset_path=dataset_path,
@@ -92,7 +86,21 @@ class ParameterSweepBenchmark(Benchmark):
         with open(os.path.join(self.session_dir, "table_results.txt"), "w") as f:
             f.write(table_str)
 
-        plot_parameter_analysis(master_csv, self.args.param, os.path.join(self.session_dir, "parameter_plot.pdf"))
+        # Write per-sweep-value results to DB
+        if self.db_conn:
+            for _, row in df.iterrows():
+                param_val = row.get(self.args.param)
+                for algo in strategies:
+                    t = row.get(f"Time_{algo}")
+                    r = row.get(f"Ratio_{algo}")
+                    if t is None or pd.isna(t):
+                        continue
+                    db.write_result(
+                        self.db_conn,
+                        algorithm=algo, dataset=row["Dataset"],
+                        time=t, ratio=r,
+                        params={self.args.param: param_val},
+                    )
 
 
 if __name__ == "__main__":

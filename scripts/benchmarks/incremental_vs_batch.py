@@ -25,12 +25,13 @@ from tabulate import tabulate
 
 from scripts.benchmark import Benchmark
 from scripts.config import ALGORITHMS, PARAM_CONFIG
+from scripts.datasets import create_partial_dataset
+import scripts.db as db
 
 
 class IncrementalVsBatchBenchmark(Benchmark):
 
     DEFAULT_CHECKPOINTS = [0.2, 0.4, 0.6, 0.8, 1.0]
-    _EDGE_PATTERN = re.compile(r"^\s*(\d+)\s+(\d+)")
     _MOSSO_LOG_PATTERN = re.compile(r"(\d+)\s*:\s*Elapsed time\s*:\s*([\d.]+)\s*:\s*ratio\s*:\s*([\d.]+)")
 
     def __init__(self):
@@ -43,46 +44,8 @@ class IncrementalVsBatchBenchmark(Benchmark):
             help="Edge stream fractions to evaluate at (default: 0.2 0.4 0.6 0.8 1.0)",
         )
 
-    def _create_partial_dataset(self, dataset_path: str, fraction: float, total_edges: int):
-        """Write a file containing the first *fraction* of edges."""
-        target_edges = int(total_edges * fraction)
-
-        base_dir = os.path.dirname(dataset_path)
-        basename = os.path.basename(dataset_path)
-        partial_dir = os.path.join(base_dir, "partial")
-        os.makedirs(partial_dir, exist_ok=True)
-
-        partial_path = os.path.join(partial_dir, f"p{int(fraction * 100)}_{basename}")
-
-        # Cache: reuse if already created in an earlier run
-        if os.path.exists(partial_path):
-            return partial_path
-
-        edges_written = 0
-        seen_edges = set()
-        with open(dataset_path, "r", encoding="utf-8") as f_in, \
-                open(partial_path, "w", encoding="utf-8") as f_out:
-            for line in f_in:
-                if line.startswith(('#', '%')): continue
-
-                match = self._EDGE_PATTERN.search(line)
-                if match:
-                    u, v = int(match.group(1)), int(match.group(2))
-                    if u == v: continue  # Remove self-loops
-
-                    # ignore the direction of edge
-                    edge = tuple(sorted((u, v)))
-                    # remove duplicate edges
-                    if edge in seen_edges: continue
-                    seen_edges.add(edge)
-
-                    f_out.write(line)
-                    edges_written += 1
-
-        self.logger.debug(
-            f"\t[*] Partial dataset ({fraction:.0%}): {edges_written:,} edges -> {partial_path}"
-        )
-        return partial_path
+    def _create_partial_dataset(self, dataset_path: str, fraction: float, total_edges: int) -> str:
+        return create_partial_dataset(dataset_path, fraction, total_edges, self.logger)
 
     def _parse_mosso_stdout(self, stdout: str):
         """Parses the interval logs from MoSSo stdout to extract time and ratio."""
@@ -114,10 +77,7 @@ class IncrementalVsBatchBenchmark(Benchmark):
         }
 
         for algo_name, algo_config in self.active_algos.items():
-            resolved_params = {}
-            params = algo_config.get("params", {})
-            for p_key in PARAM_CONFIG:
-                resolved_params[p_key] = params.get(p_key, getattr(self.args, p_key))
+            resolved_params = self._resolve_algo_params(algo_config)
 
             is_batch = self._algo_type(algo_name) == "mags"
 
@@ -132,7 +92,7 @@ class IncrementalVsBatchBenchmark(Benchmark):
                     else:
                         partial_path = self._create_partial_dataset(dataset_path, cp, total_edges)
 
-                    t_avg, r_avg, _, _ = self.execute_runner(
+                    t_avg, r_avg, _, _, _ = self.execute_runner(
                         algo_name=algo_name,
                         algo_config=algo_config,
                         dataset_path=partial_path,
@@ -152,7 +112,7 @@ class IncrementalVsBatchBenchmark(Benchmark):
                 self.logger.info(f"\t[*] Running Incremental Algorithm: {algo_name}")
 
                 # execute_runner returns times/ratios, not the raw stdout strings
-                t_avg, r_avg, _, _ = self.execute_runner(
+                t_avg, r_avg, _, _, _ = self.execute_runner(
                     algo_name=algo_name,
                     algo_config=algo_config,
                     dataset_path=dataset_path,
@@ -409,9 +369,20 @@ class IncrementalVsBatchBenchmark(Benchmark):
         with open(os.path.join(self.session_dir, "table_results.txt"), "w") as f:
             f.write(table_str)
 
-        # Plots
-        self._plot_compression_evolution(df, algos)
-        self._plot_speed_bar_chart(df, algos)
+        # Write per-checkpoint results to DB
+        if self.db_conn:
+            for _, row in df.iterrows():
+                for algo in algos:
+                    t = row.get(f"Time_{algo}")
+                    r = row.get(f"Ratio_{algo}")
+                    if t is None or pd.isna(t):
+                        continue
+                    db.write_result(
+                        self.db_conn,
+                        algorithm=algo, dataset=row["Dataset"],
+                        time=t, ratio=r,
+                        checkpoint=float(row["Checkpoint"]),
+                    )
 
     def _algo_style(self, algo, color_idx, cmap):
         """Return visual properties depending on algorithm type."""

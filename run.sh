@@ -21,42 +21,4 @@ if [ ! -f "$FASTUTIL_JAR" ]; then
     curl -sO "https://repo1.maven.org/maven2/it/unimi/dsi/fastutil/${FASTUTIL_VER}/${FASTUTIL_JAR}"
 fi
 
-TYPE=""
-for arg in "$@"; do
-  case $arg in
-    --type=*)
-      TYPE="${arg#*=}"
-      shift
-      ;;
-    --type)
-      TYPE="$2"
-      shift 2
-      ;;
-  esac
-done
-
-case $TYPE in
-    compare)
-        python3 -m scripts.benchmarks.compare "$@"
-        ;;
-    sweep)
-        python3 -m scripts.benchmarks.parameter_sweep "$@"
-        ;;
-    lhs)
-        python3 -m scripts.benchmarks.latin_hypercube "$@"
-        ;;
-    bayesian)
-      python3 -m scripts.benchmarks.bayesian_opt "$@"
-        ;;
-    ivb)
-      python3 -m scripts.benchmarks.incremental_vs_batch "$@"
-        ;;
-    metadata)
-          python3 -m scripts.dataset_metadata "$@"
-            ;;
-    *)
-        echo "Usage: ./run.sh --type {compare|sweep|latin} [options]"
-        echo "Example: ./run.sh --type compare --methods mags --group one"
-        exit 1
-        ;;
-esac
+python3 -m scripts "$@"

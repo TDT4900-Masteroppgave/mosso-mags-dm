@@ -4,13 +4,14 @@ from tabulate import tabulate
 from scipy.stats import qmc
 
 from scripts.config import PARAM_CONFIG
-from scripts.plotter import plot_pareto_front, get_pareto_front_2d
+from scripts.plotting import get_pareto_front_2d
 from scripts.benchmark import Benchmark
+import scripts.db as db
+
 
 class LHSBenchmark(Benchmark):
     def __init__(self):
         super().__init__("lhs")
-        # Dictionary to store the fixed LHS samples per algorithm
         self.algo_samples = {}
 
     def add_custom_args(self, parser):
@@ -20,12 +21,12 @@ class LHSBenchmark(Benchmark):
         bounds = PARAM_CONFIG.get(p_key, {}).get('bounds')
         return f"BOUNDS {bounds}" if bounds else "FIXED"
 
-    def generate_lhs_samples(self, algo_template):
-        """Generates scaled LHS configurations for the active template."""
+    def generate_lhs_samples(self, algo_template: list) -> list[dict]:
+        """Generates scaled LHS configurations for the active template (seeded for reproducibility)."""
         if not algo_template:
             return []
 
-        sampler = qmc.LatinHypercube(d=len(algo_template))
+        sampler = qmc.LatinHypercube(d=len(algo_template), seed=self.args.seed)
         sample = sampler.random(n=self.args.samples)
 
         configs = []
@@ -43,25 +44,17 @@ class LHSBenchmark(Benchmark):
         return configs
 
     def process(self, dataset_path: str, ds: dict, dataset_name: str):
-
         for algo_name, algo_config in self.active_algos.items():
             template = algo_config.get('template', [])
-            base_params = algo_config.get('params', {})
 
-            # Generate the samples ONCE per algorithm and cache them
             if algo_name not in self.algo_samples:
                 self.algo_samples[algo_name] = self.generate_lhs_samples(template) if template else [{}]
 
-            # Retrieve the fixed configurations for this algorithm
             lhs_configs = self.algo_samples[algo_name]
             total_runs = len(lhs_configs)
 
             for run_idx, lhs_params in enumerate(lhs_configs, 1):
-                resolved_params = {}
-                for p_key in PARAM_CONFIG.keys():
-                    resolved_params[p_key] = getattr(self.args, p_key)
-                resolved_params.update(base_params)
-                resolved_params.update(lhs_params)
+                resolved_params = self._resolve_algo_params(algo_config, lhs_params)
 
                 if template:
                     self.logger.info(f"\t[{algo_name}] Testing Config {run_idx}/{total_runs}: {lhs_params}")
@@ -70,7 +63,7 @@ class LHSBenchmark(Benchmark):
 
                 unique_run_name = f"{dataset_name}_lhs{run_idx}"
 
-                t, r, _, _ = self.execute_runner(
+                t, r, _, _, m_list = self.execute_runner(
                     algo_name=algo_name,
                     algo_config=algo_config,
                     dataset_path=dataset_path,
@@ -83,8 +76,11 @@ class LHSBenchmark(Benchmark):
                         "Dataset": dataset_name,
                         "Algorithm": algo_name,
                         "Time": t,
-                        "Ratio": r
+                        "Ratio": r,
                     }
+                    if m_list:
+                        import numpy as np
+                        res["Memory_MB"] = float(np.mean(m_list))
                     for p_key in template:
                         res[p_key] = resolved_params[p_key]
 
@@ -96,14 +92,8 @@ class LHSBenchmark(Benchmark):
             return pd.DataFrame()
 
         df = pd.DataFrame(self.results)
-
-        # We want to group by everything EXCEPT Dataset, Time, and Ratio
-        group_cols = [col for col in df.columns if col not in ['Dataset', 'Time', 'Ratio']]
-
-        # Calculate the mean Time and Ratio across all datasets for each specific config
+        group_cols = [col for col in df.columns if col not in ['Dataset', 'Time', 'Ratio', 'Memory_MB']]
         avg_df = df.groupby(group_cols).mean(numeric_only=True).reset_index()
-
-        # Add a placeholder dataset name so the plotter knows they belong to one global plot
         avg_df['Dataset'] = 'AVERAGE_ACROSS_DATASETS'
         return avg_df
 
@@ -124,7 +114,6 @@ class LHSBenchmark(Benchmark):
             pareto_df_avg = get_pareto_front_2d(avg_df, 'Time', 'Ratio')
             pareto_df_avg = pareto_df_avg.sort_values(by="Time", ascending=True)
 
-            # Drop the placeholder column just for a cleaner console print
             if 'Dataset' in pareto_df_avg.columns:
                 pareto_df_avg = pareto_df_avg.drop(columns=['Dataset'])
 
@@ -158,15 +147,27 @@ class LHSBenchmark(Benchmark):
             table_output += "\n--- GLOBAL PARETO OPTIMAL CONFIGURATIONS (LHS AVERAGED) ---\n"
             table_output += tabulate(pareto_df_avg, headers='keys', tablefmt='grid', showindex=False) + "\n"
 
-        # Save to text file
         with open(os.path.join(self.session_dir, "table_results.txt"), "w") as f:
             f.write(table_output)
 
-        combined_df = pd.concat([raw_df, avg_df], ignore_index=True)
         combined_csv = os.path.join(self.session_dir, "lhs_combined_for_plot.csv")
-        combined_df.to_csv(combined_csv, index=False)
+        pd.concat([raw_df, avg_df], ignore_index=True).to_csv(combined_csv, index=False)
 
-        plot_pareto_front(combined_csv, os.path.join(self.session_dir, "lhs_optimization_plot.pdf"))
+        # Write per-sample results to DB
+        if self.db_conn:
+            param_skip = {"Dataset", "Algorithm", "Time", "Ratio", "Memory_MB"}
+            for sample_i, (_, row) in enumerate(raw_df.iterrows(), 1):
+                params = {c: row[c] for c in raw_df.columns
+                          if c not in param_skip and not pd.isna(row.get(c))}
+                db.write_result(
+                    self.db_conn,
+                    algorithm=row["Algorithm"], dataset=row["Dataset"],
+                    time=row.get("Time"), ratio=row.get("Ratio"),
+                    memory_mb=row.get("Memory_MB"),
+                    sample=sample_i,
+                    params=params,
+                )
+
 
 if __name__ == "__main__":
     LHSBenchmark().run()

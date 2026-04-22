@@ -5,9 +5,9 @@ import optuna
 import warnings
 
 from scripts.config import PARAM_CONFIG
-from scripts.plotter import get_pareto_front_2d
+from scripts.plotting import get_pareto_front_2d
 from scripts.benchmark import Benchmark
-from scripts.plotter import plot_pareto_front
+import scripts.db as db
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -31,7 +31,6 @@ class BayesianOptimizationBenchmark(Benchmark):
 
             def objective(objective_trial):
                 resolved_params = {}
-
                 for p_key in template:
                     bounds = PARAM_CONFIG.get(p_key, {}).get("bounds")
                     if bounds:
@@ -39,8 +38,11 @@ class BayesianOptimizationBenchmark(Benchmark):
                     else:
                         resolved_params[p_key] = PARAM_CONFIG.get(p_key, {}).get("default")
 
-                avg_time, avg_ratio, _, _ = self.execute_runner(
-                    algo_name, algo_config, dataset_path, dataset_name, resolved_params
+                # Fill remaining params with defaults
+                full_params = self._resolve_algo_params(algo_config, resolved_params)
+
+                avg_time, avg_ratio, _, _, _ = self.execute_runner(
+                    algo_name, algo_config, dataset_path, dataset_name, full_params
                 )
 
                 if avg_time is None or avg_ratio is None:
@@ -57,16 +59,20 @@ class BayesianOptimizationBenchmark(Benchmark):
 
                 return avg_time, avg_ratio
 
+            # Scope the DB to this session to avoid accumulating stale trials across runs
             db_path = os.path.join(self.session_dir, "optuna_study.db")
             study_name = f"{algo_name}_{dataset_name}"
-            sampler = optuna.samplers.TPESampler(n_startup_trials=self.args.n_startup)
+            sampler = optuna.samplers.TPESampler(
+                n_startup_trials=self.args.n_startup,
+                seed=self.args.seed,
+            )
 
             study = optuna.create_study(
                 study_name=study_name,
                 storage=f"sqlite:///{db_path}",
                 directions=["minimize", "minimize"],
                 sampler=sampler,
-                load_if_exists=True
+                load_if_exists=False,  # fresh study per session for reproducibility
             )
 
             self.logger.info(f"\n[*] Starting Optuna Search for [{algo_name}] on [{dataset_name}] ({self.args.iterations} trials)")
@@ -80,22 +86,17 @@ class BayesianOptimizationBenchmark(Benchmark):
         if not self.results: return pd.DataFrame()
         df = pd.DataFrame(self.results)
 
-        # Normalize Time and Ratio per Dataset (Scale: 0.0 to 1.0)
-        # Divide by the maximum value observed in each dataset so massive graphs
-        # don't mathematically overpower the small graphs.
         df['Time_Norm'] = df.groupby('Dataset')['Time'].transform(lambda x: x / x.max())
         df['Ratio_Norm'] = df.groupby('Dataset')['Ratio'].transform(lambda x: x / x.max())
 
-        # Group by Hyperparameters and calculate the mean
         group_cols = [col for col in df.columns if col not in ['Dataset', 'Time', 'Ratio', 'Time_Norm', 'Ratio_Norm']]
         avg_df = df.groupby(group_cols, dropna=False).mean(numeric_only=True).reset_index()
 
-        # Overwrite the main Time/Ratio columns with the Normalized values
         avg_df['Raw_Time_Avg'] = avg_df['Time']
         avg_df['Raw_Ratio_Avg'] = avg_df['Ratio']
 
-        avg_df['Time'] = avg_df['Time_Norm']    # Now represents "Normalized Time Score"
-        avg_df['Ratio'] = avg_df['Ratio_Norm']  # Now represents "Normalized Ratio Score"
+        avg_df['Time'] = avg_df['Time_Norm']
+        avg_df['Ratio'] = avg_df['Ratio_Norm']
 
         avg_df = avg_df.drop(columns=['Time_Norm', 'Ratio_Norm'])
         avg_df['Dataset'] = 'GLOBAL_NORMALIZED_AVERAGE'
@@ -108,7 +109,6 @@ class BayesianOptimizationBenchmark(Benchmark):
 
         self.logger.info("\n--- OPTUNA OPTIMIZATION: PARETO FRONTS (Normalized Scale 0.0 - 1.0) ---")
 
-        # Split the data by algorithm and print a separate Pareto table for each
         for algo in avg_df['Algorithm'].unique():
             algo_df = avg_df[avg_df['Algorithm'] == algo]
             pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio').sort_values(by=["Ratio", "Time"])
@@ -131,7 +131,6 @@ class BayesianOptimizationBenchmark(Benchmark):
 
         table_output = "--- OPTUNA SEARCH RESULTS ---\n"
 
-        # Save the separated Pareto fronts to the text file
         for algo in avg_df['Algorithm'].unique():
             algo_df = avg_df[avg_df['Algorithm'] == algo]
             pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio').sort_values(by=["Ratio", "Time"])
@@ -145,12 +144,20 @@ class BayesianOptimizationBenchmark(Benchmark):
         csv_file = os.path.join(self.session_dir, "optuna_combined_results.csv")
         pd.concat([raw_df, avg_df], ignore_index=True).to_csv(csv_file, index=False)
 
-        try:
-            plot_file = os.path.join(self.session_dir, "pareto_front.pdf")
-            plot_pareto_front(csv_file, plot_file, self.logger)
-            self.logger.info(f"[*] Pareto front plot saved to: {plot_file}")
-        except Exception as e:
-            self.logger.error(f"[!] Failed to generate Pareto plot: {e}")
+        # Write per-trial results to unified DB
+        if self.db_conn:
+            param_cols = [c for c in raw_df.columns
+                          if c not in {"Dataset", "Algorithm", "Time", "Ratio"}]
+            for trial_i, (_, row) in enumerate(raw_df.iterrows(), 1):
+                params = {c: row[c] for c in param_cols if not pd.isna(row.get(c))}
+                db.write_result(
+                    self.db_conn,
+                    algorithm=row["Algorithm"], dataset=row["Dataset"],
+                    time=row.get("Time"), ratio=row.get("Ratio"),
+                    trial=trial_i,
+                    params=params,
+                )
+
 
 if __name__ == "__main__":
     BayesianOptimizationBenchmark().run()
