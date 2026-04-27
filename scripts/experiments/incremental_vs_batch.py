@@ -19,7 +19,7 @@ import re
 
 import pandas as pd
 
-from scripts.experiment import Experiment
+from scripts.experiments.base_experiment import Experiment
 from scripts.config import ALGORITHMS
 from scripts.datasets import create_partial_dataset
 import scripts.db as db

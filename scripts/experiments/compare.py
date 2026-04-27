@@ -1,6 +1,6 @@
 from typing import Any
 
-from scripts.experiment import Experiment
+from scripts.experiments.base_experiment import Experiment
 
 class Compare(Experiment):
     def __init__(self):

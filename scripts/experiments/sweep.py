@@ -1,7 +1,7 @@
 from typing import Any
 
 from scripts.config import PARAM_CONFIG
-from scripts.experiment import Experiment
+from scripts.experiments.base_experiment import Experiment
 
 
 class ParameterSweep(Experiment):

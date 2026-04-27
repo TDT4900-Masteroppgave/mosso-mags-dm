@@ -8,10 +8,10 @@ import sys
 import importlib
 
 _TYPES = {
-    "compare":  "scripts.benchmarks.compare",
-    "sweep":    "scripts.benchmarks.parameter_sweep",
-    "bayesian": "scripts.benchmarks.bayesian_opt",
-    "ivb":      "scripts.benchmarks.incremental_vs_batch",
+    "compare":  "scripts.experiments.compare",
+    "sweep":    "scripts.experiments.sweep",
+    "bayesian": "scripts.experiments.bayesian_opt",
+    "ivb":      "scripts.experiments.incremental_vs_batch",
     "analyze":  "scripts.analysis.analyze",
 }
 

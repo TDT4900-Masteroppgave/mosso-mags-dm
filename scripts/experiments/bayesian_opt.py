@@ -4,7 +4,7 @@ import optuna
 import warnings
 
 from scripts.config import PARAM_CONFIG
-from scripts.experiment import Experiment
+from scripts.experiments.base_experiment import Experiment
 import scripts.db as db
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
