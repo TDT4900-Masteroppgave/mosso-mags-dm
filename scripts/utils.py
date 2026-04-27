@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from scripts.config import EXPERIMENT_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, ALGORITHMS_DIR
+from scripts.config import EXPERIMENT_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, ALGORITHMS_DIR, DATASET_GROUP
 
 
 def setup_logging(log_file_path: str):
@@ -89,107 +89,86 @@ def setup_directories() -> None:
 
 
 def get_datasets_to_run(args) -> list[dict]:
-    datasets: list[dict] = []
+    datasets = []
 
     if getattr(args, "dataset", None):
-        all_available = [d for group in DATASETS.values() for d in group]
         for req in args.dataset:
-            matched = next(
-                (d for d in all_available if d["short_name"] == req or d["filename"] == req),
-                None,
-            )
-            if matched:
-                if matched not in datasets:
-                    datasets.append(matched)
+            if req in DATASETS:
+                ds = DATASETS[req].copy()
+                ds["short_name"] = req
+                datasets.append(ds)
             else:
-                print(f"[!] Warning: Dataset '{req}' not found in configuration. Skipping.")
+                print(f"[!] Warning: Dataset '{req}' not found.")
 
-        if not datasets:
-            raise ValueError("No valid datasets found based on your --dataset argument.")
-    else:
+    elif getattr(args, "group", None):
         if args.group == "all":
-            for group_datasets in DATASETS.values():
-                datasets.extend(group_datasets)
+            keys_to_run = list(DATASETS.keys())
         else:
-            datasets = DATASETS.get(args.group, [])
-            if not datasets:
-                raise ValueError(f"Dataset group '{args.group}' not found in config.")
+            keys_to_run = DATASET_GROUP.get(args.group, [])
+
+        for key in keys_to_run:
+            ds = DATASETS[key].copy()
+            ds["short_name"] = key
+            datasets.append(ds)
 
     return datasets
 
-
-def format_dataframe_with_baseline(
-        df: pd.DataFrame,
-        strategies: list[str],
-        baseline_algo: str | None = None,
-        time_prefix: str = "Time_",
-        ratio_prefix: str = "Ratio_",
-) -> pd.DataFrame:
-    """Format time/ratio columns with ±std, CI, and optional speedup vs baseline."""
+def format_long_dataframe_with_baseline(df: pd.DataFrame, baseline_algo: str | None = None) -> pd.DataFrame:
+    """Formats a long-form DataFrame with baseline speedup multipliers and CIs."""
     display_df = df.copy()
 
-    for strat in strategies:
-        time_col = f"{time_prefix}{strat}"
-        ratio_col = f"{ratio_prefix}{strat}"
-        t_std_col = f"{time_prefix}std_{strat}"
-        r_std_col = f"{ratio_prefix}std_{strat}"
+    base_time_map, base_ratio_map = {}, {}
+    if baseline_algo and baseline_algo in df['algorithm'].values:
+        baseline_data = df[df['algorithm'] == baseline_algo].groupby('dataset')[['time', 'ratio']].mean()
+        base_time_map = baseline_data['time'].to_dict()
+        base_ratio_map = baseline_data['ratio'].to_dict()
 
-        # New CI columns
-        t_ci_lo_col = f"{time_prefix}ci_lo_{strat}"
-        t_ci_hi_col = f"{time_prefix}ci_hi_{strat}"
-        r_ci_lo_col = f"{ratio_prefix}ci_lo_{strat}"
-        r_ci_hi_col = f"{ratio_prefix}ci_hi_{strat}"
+    formatted_times = []
+    formatted_ratios = []
 
-        formatted_times, formatted_ratios = [], []
+    for _, row in display_df.iterrows():
+        t_val = row.get('time')
+        r_val = row.get('ratio')
+        dataset = row.get('dataset')
+        algo = row.get('algorithm')
 
-        for _, row in df.iterrows():
-            t_val, r_val = row.get(time_col), row.get(ratio_col)
-            t_std = row.get(t_std_col, 0.0)
-            r_std = row.get(r_std_col, 0.0)
+        # Extract DB Confidence Intervals
+        t_lo, t_hi = row.get('time_ci_lo'), row.get('time_ci_hi')
+        r_lo, r_hi = row.get('ratio_ci_lo'), row.get('ratio_ci_hi')
 
-            t_ci_lo, t_ci_hi = row.get(t_ci_lo_col), row.get(t_ci_hi_col)
-            r_ci_lo, r_ci_hi = row.get(r_ci_lo_col), row.get(r_ci_hi_col)
+        # Format Time with CI and speedup
+        t_str = "N/A"
+        if pd.notna(t_val):
+            t_str = f"{t_val:.3f}s"
+            if pd.notna(t_lo) and pd.notna(t_hi):
+                t_str += f" [{t_lo:.3f}, {t_hi:.3f}]"
 
-            # Build Time string
-            t_str = "N/A"
-            if pd.notna(t_val):
-                t_str = f"{t_val:.3f}s"
-                if t_std_col in df.columns and pd.notna(t_std) and t_std > 0:
-                    t_str += f" ± {t_std:.3f}s"
-
-                if pd.notna(t_ci_lo) and pd.notna(t_ci_hi) and t_std > 0:
-                    t_str += f" [{t_ci_lo:.3f}, {t_ci_hi:.3f}]"
-
-            # Build Ratio string
-            r_str = "N/A"
-            if pd.notna(r_val):
-                r_str = f"{r_val:.5f}"
-                if r_std_col in df.columns and pd.notna(r_std) and r_std > 0:
-                    r_str += f" ± {r_std:.5f}"
-
-                if pd.notna(r_ci_lo) and pd.notna(r_ci_hi) and r_std > 0:
-                    r_str += f" [{r_ci_lo:.5f}, {r_ci_hi:.5f}]"
-
-            # Apply baseline multipliers
-            if baseline_algo and baseline_algo in strategies and strat != baseline_algo:
-                t_base = row.get(f"{time_prefix}{baseline_algo}")
-                r_base = row.get(f"{ratio_prefix}{baseline_algo}")
-
-                if pd.notna(t_val) and pd.notna(t_base) and t_val > 0:
+            if baseline_algo and algo != baseline_algo and dataset in base_time_map:
+                t_base = base_time_map[dataset]
+                if t_val > 0 and t_base > 0:
                     t_str += f" ({t_base / t_val:.2f}x)"
 
-                if pd.notna(r_val) and pd.notna(r_base) and r_base > 0:
+        # Format Ratio with CI and multiplier
+        r_str = "N/A"
+        if pd.notna(r_val):
+            r_str = f"{r_val:.5f}"
+            if pd.notna(r_lo) and pd.notna(r_hi):
+                r_str += f" [{r_lo:.5f}, {r_hi:.5f}]"
+
+            if baseline_algo and algo != baseline_algo and dataset in base_ratio_map:
+                r_base = base_ratio_map[dataset]
+                if r_base > 0:
                     r_str += f" ({r_val / r_base:.2f}x)"
 
-            formatted_times.append(t_str)
-            formatted_ratios.append(r_str)
+        formatted_times.append(t_str)
+        formatted_ratios.append(r_str)
 
-        display_df[time_col] = formatted_times
-        display_df[ratio_col] = formatted_ratios
+    display_df['time'] = formatted_times
+    display_df['ratio'] = formatted_ratios
 
-    # Drop all the raw helper columns (std and ci) so they don't render as extra columns in the text table
-    std_ci_cols = [c for c in display_df.columns if "_std_" in c or "_ci_lo_" in c or "_ci_hi_" in c]
-    return display_df.drop(columns=std_ci_cols)
+    # Drop the raw CI columns from the final terminal table to keep it clean
+    cols_to_drop = [c for c in display_df.columns if '_ci_' in c]
+    return display_df.drop(columns=cols_to_drop, errors='ignore')
 
 def _run_build(cmd: list[str], cwd=None, env=None):
     return subprocess.run(
@@ -212,7 +191,7 @@ def get_confidence_interval(
     rng = np.random.default_rng(seed)
     arr = np.asarray(xs, dtype=float)
     resampled = rng.choice(arr, size=(n, len(arr)), replace=True)
-    stats = np.apply_along_axis(stat, 1, resampled)
+    stats = stat(resampled, axis=1)
     lo = float(np.percentile(stats, 100 * alpha / 2))
     hi = float(np.percentile(stats, 100 * (1 - alpha / 2)))
     return lo, hi

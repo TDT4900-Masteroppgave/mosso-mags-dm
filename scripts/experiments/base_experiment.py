@@ -1,5 +1,4 @@
 import json
-import os.path
 import random
 import argparse
 from abc import ABC, abstractmethod
@@ -15,10 +14,10 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, EXPERIMENT_DIR
+from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, EXPERIMENT_DIR, DATASET_GROUP
 from scripts.utils import (
     setup_logging, setup_directories, get_datasets_to_run,
-    get_repo_info, get_env_info, format_dataframe_with_baseline,
+    get_repo_info, get_env_info,
     get_confidence_interval
 )
 from scripts.datasets import download_dataset
@@ -45,13 +44,11 @@ class Experiment(ABC):
         self.console = Console(highlight=False)
         self.db_conn = None
 
-        self.all_times_dict, self.all_ratios_dict = {}, {}
-
     def add_custom_args(self, parser: argparse.ArgumentParser) -> None:
         return
 
     @abstractmethod
-    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict[str, Any]] | None:
+    def process(self, dataset_path: str, dataset_short_name: str) -> None:
         pass
 
     def run(self) -> None:
@@ -78,6 +75,7 @@ class Experiment(ABC):
         self.console.rule("[bold]Setup[/bold]")
 
         self.datasets_to_run = get_datasets_to_run(self.args)
+
         setup_directories()
 
         self.db_conn = db.init_db(self.session_dir)
@@ -99,15 +97,10 @@ class Experiment(ABC):
             self.console.print(
                 f"[bold cyan][{i}/{n}][/bold cyan] {short_name} ({self.args.runs} run{'s' if self.args.runs != 1 else ''})")
 
-            metrics_list = self.process(dataset_path, short_name)
-            if not metrics_list:
+            self.process(dataset_path, short_name)
+            if not self.results:
                 self.logger.warning(f"No results returned for {filename}")
                 continue
-
-            for row in metrics_list:
-                if "parameters" in row:
-                    row["params"] = json.dumps(row.pop("parameters"))
-                self.results.append(row)
 
     def _handle_results(self) -> None:
         if not self.results:
@@ -127,86 +120,16 @@ class Experiment(ABC):
             self.logger.warning("No database connection. Skipping table generation.")
             return
 
-        long_df = db.read_results(self.db_conn)
-        if long_df.empty:
+        table_df = db.read_results(self.db_conn)
+        if table_df.empty:
             return
-
-        metadata_cols = ['dataset', 'algorithm', 'run', 'parameters']
-
-        dynamic_metrics = [
-            col for col in long_df.columns
-            if col not in metadata_cols and pd.api.types.is_numeric_dtype(long_df[col])
-        ]
-
-        def ci_lo(x):
-            valid = x.dropna()
-            if len(valid) < 2: return np.nan
-            lower_bound, _ = get_confidence_interval(valid.tolist(), stat=np.mean, seed=self.args.seed)
-            return lower_bound
-
-        def ci_hi(x):
-            valid = x.dropna()
-            if len(valid) < 2: return np.nan
-            _, upper_bound = get_confidence_interval(valid.tolist(), stat=np.mean, seed=self.args.seed)
-            return upper_bound
-
-        wide_df = long_df.pivot_table(
-            index=['dataset'],
-            columns='algorithm',
-            values=dynamic_metrics,
-            aggfunc=['mean', 'std', ci_lo, ci_hi]
-        )
-
-        flattened_cols = []
-        for agg_func, metric, algo in wide_df.columns:
-            if agg_func == 'mean':
-                flattened_cols.append(f"{metric}_{algo}")
-            elif agg_func == 'std':
-                flattened_cols.append(f"{metric}_std_{algo}")
-            elif agg_func == 'ci_lo':
-                flattened_cols.append(f"{metric}_ci_lo_{algo}")
-            elif agg_func == 'ci_hi':
-                flattened_cols.append(f"{metric}_ci_hi_{algo}")
-
-        wide_df.columns = flattened_cols
-        wide_df = wide_df.reset_index()
-
-        avg_row = wide_df.mean(numeric_only=True).to_dict()
-        avg_row['dataset'] = 'AVERAGE'
-
-        algorithms = long_df['algorithm'].unique().tolist()
-        for algo in algorithms:
-            for metric in dynamic_metrics:
-                col = f"{metric}_{algo}"
-                if col in wide_df.columns:
-                    vals = wide_df[col].dropna().tolist()
-                    if len(vals) >= 2:
-                        lo, hi = get_confidence_interval(vals, stat=np.mean, seed=self.args.seed)
-                        avg_row[f"{metric}_ci_lo_{algo}"] = lo
-                        avg_row[f"{metric}_ci_hi_{algo}"] = hi
-                        avg_row[f"{metric}_std_{algo}"] = np.std(vals)
-
-        table_df = pd.concat([wide_df, pd.DataFrame([avg_row])], ignore_index=True)
-
-        strategies = [
-            col.replace("time_", "") for col in table_df.columns
-            if col.startswith("time_") and not col.startswith("time_ci") and not col.startswith("time_std")
-        ]
-
-        display_df = format_dataframe_with_baseline(
-            table_df,
-            strategies,
-            self.args.baseline,
-            time_prefix="time_",
-            ratio_prefix="ratio_"
-        )
 
         res_table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
 
-        for col in display_df.columns:
-            res_table.add_column(str(col))
+        for col in table_df.columns:
+            res_table.add_column(str(col).capitalize())
 
-        for _, row in display_df.iterrows():
+        for _, row in table_df.iterrows():
             res_table.add_row(*[str(val) if pd.notna(val) else "" for val in row])
 
         self.console.print(res_table)
@@ -235,12 +158,42 @@ class Experiment(ABC):
         return cmd
 
     def print_metrics(self, algo_name: str, t_avg: float, r_avg: float, t_list: list[float],
-                      r_list: list[float]) -> None:
+                      r_list: list[float], t_std: float, r_std: float, t_lo: float, t_hi: float,
+                      r_lo: float, r_hi: float) -> None:
         """Prints the metrics in a table."""
+        if len(t_list) > 1 and len(r_list) > 1:
+            t_ci_str = f"CI=[{t_lo:.3f},{t_hi:.3f}]" if t_lo is not None and t_hi is not None else ""
+            r_ci_str = f"CI=[{r_lo:.3f},{r_hi:.3f}]" if r_lo is not None and r_hi is not None else ""
+            self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s ± {t_std:.3f}s {t_ci_str} "
+                             f"| Ratio: {r_avg:.3f} ± {r_std:.3f} {r_ci_str}")
+        else:
+            self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s | Ratio: {r_avg:.5f}")
+
+    def execute_runner(self, algo_name: str, dataset_path: str, dataset_short_name: str,
+                       params: dict[str, str]) -> list[dict] | None:
+        """A helper method to standardize runner execution across subclasses."""
+        runner = get_runner(algo_name, self.logger, str(self.session_dir))
+        if not runner.binary_exists():
+            self.logger.warning(f"[!] Binary not found for {algo_name}. Skipping.")
+            return None
+
+        with self.console.status(f"[bold blue]Running {algo_name} | params: {params} [/bold blue]"):
+            t_avg, r_avg, t_list, r_list = runner.run_multiple(
+                dataset_path=dataset_path,
+                base_output_name=f"{algo_name}_{dataset_short_name}_{self.timestamp}",
+                n_runs=self.args.runs,
+                parameters=list(params.values())
+            )
+
+        if t_avg is None or r_avg is None or t_list is None or r_list is None:
+            self.logger.warning(f"=> {algo_name} failed to run with params: {params}")
+            return None
+
+        t_std, r_std, t_lo, t_hi, r_lo, r_hi = None, None, None, None, None, None
+
         if len(t_list) > 1 and len(r_list) > 1:
             t_std = np.std(t_list)
             r_std = np.std(r_list)
-
             t_lo, t_hi = get_confidence_interval(t_list, seed=self.args.seed)
             r_lo, r_hi = get_confidence_interval(r_list, seed=self.args.seed)
 
@@ -248,38 +201,27 @@ class Experiment(ABC):
             r_ci_str = f"CI=[{r_lo:.3f},{r_hi:.3f}]" if r_lo is not None and r_hi is not None else ""
             self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s ± {t_std:.3f}s {t_ci_str} "
                              f"| Ratio: {r_avg:.3f} ± {r_std:.3f} {r_ci_str}")
-
-            self.all_times_dict[algo_name] = t_list
-            self.all_ratios_dict[algo_name] = r_list
         else:
             self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s | Ratio: {r_avg:.5f}")
 
-    def execute_runner(self, algo_name: str, dataset_path: str,
-                       parameters: dict[str, str]) -> tuple[float | None, float | None, list | None, list | None]:
-        """A helper method to standardize runner execution across subclasses."""
-        runner = get_runner(algo_name, self.logger, str(self.session_dir))
+        run_data = []
+        for i, (t, r) in enumerate(zip(t_list, r_list)):
+            run_data.append({
+                "dataset": dataset_short_name,
+                "algorithm": algo_name,
+                "run": i + 1,
+                "time": t,
+                "ratio": r,
+                "time_std": t_std,
+                "ratio_std": r_std,
+                "time_ci_lo": t_lo,
+                "time_ci_hi": t_hi,
+                "ratio_ci_lo": r_lo,
+                "ratio_ci_hi": r_hi,
+                "parameters": json.dumps(params),
+            })
 
-        if not runner.binary_exists():
-            self.logger.warning(f"[!] Binary not found for {algo_name}. Skipping.")
-            return None, None, None, None
-
-        dataset_name = os.path.basename(dataset_path)
-
-        with self.console.status(f"[bold blue]Running {algo_name} | params: {parameters} [/bold blue]"):
-            t_avg, r_avg, t_list, r_list = runner.run_multiple(
-                dataset_path=dataset_path,
-                base_output_name=f"{algo_name}_{dataset_name}_{self.timestamp}",
-                n_runs=self.args.runs,
-                parameters=list(parameters.values())
-            )
-
-        if t_avg is None or r_avg is None or t_list is None or r_list is None:
-            self.logger.warning(f"=> {algo_name} failed to run with params: {parameters}")
-            return None, None, None, None
-
-        self.print_metrics(algo_name, t_avg, r_avg, t_list, r_list)
-
-        return t_avg, r_avg, t_list, r_list
+        return run_data
 
     def _write_manifest(self) -> None:
         """Write metadata.json to the session dir for reproducibility tracing."""
@@ -314,8 +256,8 @@ class Experiment(ABC):
         parser.add_argument("--runs", type=int, default=1)
 
         data_group = parser.add_mutually_exclusive_group()
-        data_group.add_argument("--group", choices=["all"] + list(DATASETS.keys()), default="all")
-        data_group.add_argument("--dataset", nargs='+', type=str,
+        data_group.add_argument("--group", choices=["all"] + list(DATASET_GROUP.keys()), default="all")
+        data_group.add_argument("--dataset", nargs='+', choices=list(DATASETS.keys()), type=str,
                                 help="Specific dataset(s) to run by short_name (e.g., YT) or filename. Overrides --group.")
 
         parser.add_argument("--algorithm", nargs='+', help="Specific algorithms to run")
@@ -331,11 +273,6 @@ class Experiment(ABC):
         self.add_custom_args(parser)
         args = parser.parse_args()
 
-        if args.dataset:
-            delattr(args, "group")
-        elif args.group:
-            delattr(args, "dataset")
-
         # Seed all RNGs immediately after parsing
         random.seed(args.seed)
         np.random.seed(args.seed)
@@ -349,7 +286,7 @@ class Experiment(ABC):
         if args.is_local:
             self.active_algos["local"] = ALGORITHMS["local"]
 
-        if args.baseline and args.baseline not in ALGORITHMS.keys():
+        if args.baseline and args.baseline not in args.algorithm:
             print(f"[!] The specified baseline '{args.baseline}' is not in the active algorithms list.")
             exit(1)
 

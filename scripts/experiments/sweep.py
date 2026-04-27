@@ -1,5 +1,3 @@
-from typing import Any
-
 from scripts.config import PARAM_CONFIG
 from scripts.experiments.base_experiment import Experiment
 
@@ -16,41 +14,32 @@ class ParameterSweep(Experiment):
         parser.add_argument("--param", choices=list(PARAM_CONFIG.keys()), required=True)
         parser.add_argument("--range", type=int, nargs=3, required=True)
 
-    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict[str, Any]] | None:
-        runs = []
+    def process(self, dataset_path: str, dataset_short_name: str) -> None:
         for val in self.sweep_values:
             self.logger.info(f"{self.args.param} = {val}:")
             for algo_name, algo_config in self.active_algos.items():
                 if self.args.param not in algo_config.get('template', {}):
                     self.logger.info(f"=> Skipping {algo_name}: No such parameter {self.args.param}")
                     continue
+
                 params = self._resolve_algo_params(algo_config)
                 params.update({self.args.param: str(val)})
 
-                t_avg, r_avg, t_list, r_list = self.execute_runner(
+                raw_runs = self.execute_runner(
                     algo_name=algo_name,
                     dataset_path=dataset_path,
-                    parameters=params
+                    params=params,
+                    dataset_short_name=dataset_short_name,
                 )
-
-                if t_list is None or r_list is None:
+                if not raw_runs:
                     continue
 
-                for i, (t, r) in enumerate(zip(t_list, r_list)):
-                    runs.append({
-                        "dataset": dataset_short_name,
-                        "algorithm": algo_name,
-                        "run": i + 1,
-                        "time": t,
-                        "ratio": r,
-                        "parameters": params,
-                    })
-
-
-        return runs
+                for row in raw_runs:
+                    self.results.append(row)
 
 def main():
     ParameterSweep().run()
+
 
 if __name__ == "__main__":
     ParameterSweep().run()
