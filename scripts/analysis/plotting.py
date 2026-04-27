@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from scripts.stats import approx_hv2d
+from scripts.analysis.stats import approx_hv2d
 
 
 # ---------------------------------------------------------------------------

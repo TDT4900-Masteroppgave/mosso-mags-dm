@@ -89,27 +89,6 @@ def paired_wilcoxon(
         return float("nan"), float("nan")
 
 
-def bootstrap_ci(
-    xs: List[float],
-    stat=np.median,
-    n: int = 10000,
-    alpha: float = 0.05,
-    seed: Optional[int] = None,
-) -> Tuple[float, float]:
-    """Non-parametric bootstrap confidence interval for *stat* applied to *xs*.
-    Returns (lower, upper) bounds at the (alpha/2, 1-alpha/2) percentiles.
-    """
-    if not xs:
-        return float("nan"), float("nan")
-    rng = np.random.default_rng(seed)
-    arr = np.asarray(xs, dtype=float)
-    resampled = rng.choice(arr, size=(n, len(arr)), replace=True)
-    stats = np.apply_along_axis(stat, 1, resampled)
-    lo = float(np.percentile(stats, 100 * alpha / 2))
-    hi = float(np.percentile(stats, 100 * (1 - alpha / 2)))
-    return lo, hi
-
-
 def approx_hv2d(points: list[tuple[float, float]]) -> float:
     """Approximate 2D hypervolume dominated by a set of points (minimization)."""
     if not points:

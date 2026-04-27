@@ -1,9 +1,9 @@
-import os
+from pathlib import Path
 
-OUTPUT_DIR = "output"
-DATASETS_DIR = "datasets"
-BENCHMARK_DIR = os.path.join(OUTPUT_DIR, "benchmarks")
-VERSIONS_DIR = os.path.join(BENCHMARK_DIR, "versions")
+OUTPUT_DIR = Path("output")
+DATASETS_DIR = Path("datasets")
+BENCHMARK_DIR = OUTPUT_DIR / "benchmarks"
+ALGORITHMS_DIR = OUTPUT_DIR / "algorithms"
 
 BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
@@ -26,7 +26,7 @@ ALGORITHMS = {
     "kdd20-mosso": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
-        "params" : {"c": 234, "e": 2},
+        "params" : {"c": 120, "e": 3},
         "type": "mosso",
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"

@@ -15,16 +15,12 @@ Methodology based on Ko et al., "Incremental Lossless Graph Summarization" (KDD 
   - This shows MoSSo's real advantage: near-constant update cost vs growing re-run cost
 """
 
-import os
 import re
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-from tabulate import tabulate
 
 from scripts.benchmark import Benchmark
-from scripts.config import ALGORITHMS, PARAM_CONFIG
+from scripts.config import ALGORITHMS
 from scripts.datasets import create_partial_dataset
 import scripts.db as db
 
@@ -92,7 +88,7 @@ class IncrementalVsBatchBenchmark(Benchmark):
                     else:
                         partial_path = self._create_partial_dataset(dataset_path, cp, total_edges)
 
-                    t_avg, r_avg, _, _, _ = self.execute_runner(
+                    t_avg, r_avg, _, _ = self.execute_runner(
                         algo_name=algo_name,
                         algo_config=algo_config,
                         dataset_path=partial_path,
@@ -112,7 +108,7 @@ class IncrementalVsBatchBenchmark(Benchmark):
                 self.logger.info(f"\t[*] Running Incremental Algorithm: {algo_name}")
 
                 # execute_runner returns times/ratios, not the raw stdout strings
-                t_avg, r_avg, _, _, _ = self.execute_runner(
+                t_avg, r_avg, _, _ = self.execute_runner(
                     algo_name=algo_name,
                     algo_config=algo_config,
                     dataset_path=dataset_path,
@@ -188,188 +184,13 @@ class IncrementalVsBatchBenchmark(Benchmark):
     def _detect_algos(self, df):
         return [c.replace("Time_", "") for c in df.columns if c.startswith("Time_")]
 
-    def _format_display(self, df, algos):
-        """Return a human-readable copy of the results dataframe."""
-        disp = df.copy()
-        disp["Checkpoint"] = disp["Checkpoint"].apply(lambda x: f"{x:.0%}")
-        disp["Edges"] = disp["Edges"].apply(lambda x: f"{x:,}")
-        for algo in algos:
-            for prefix, fmt in [("Time_", "{:.3f}s"), ("Ratio_", "{:.5f}")]:
-                col = f"{prefix}{algo}"
-                if col in disp.columns:
-                    disp[col] = disp[col].apply(
-                        lambda x, f=fmt: f.format(x) if pd.notna(x) else "N/A"
-                    )
-        return disp
-
-    def print_table(self):
-        df = pd.DataFrame(self.results)
-        algos = self._detect_algos(df)
-        disp = self._format_display(df, algos)
-
-        table_str = tabulate(disp, headers="keys", tablefmt="grid", showindex=False)
-        for line in table_str.split("\n"):
-            self.logger.info(line)
-
-        self._print_summary(df, algos)
-
     def _algo_type(self, algo):
         return ALGORITHMS.get(algo, {}).get("type", "mosso")
 
-    def _print_summary(self, df, algos):
-        """Log a brief comparison summary at the 100% checkpoint."""
-        full = df[df["Checkpoint"] >= 0.99]
-        if full.empty:
-            return
-
-        self.logger.info("\n" + "=" * 10 + " SUMMARY AT 100% " + "=" * 10)
-
-        for dataset in full["Dataset"].unique():
-            row = full[full["Dataset"] == dataset].iloc[0]
-            n_edges = row.get("Edges", 0)
-            self.logger.info(f"\n  [{dataset}] ({int(n_edges):,} edges)")
-
-            for algo in algos:
-                t = row.get(f"Time_{algo}")
-                r = row.get(f"Ratio_{algo}")
-                kind = "batch" if self._algo_type(algo) == "mags" else "incremental"
-                if pd.notna(t) and pd.notna(r):
-                    per_edge_us = (t / n_edges * 1e6) if n_edges > 0 else 0
-                    self.logger.info(
-                        f"    {algo:<12} ({kind:<11}) "
-                        f"Time: {t:.3f}s | "
-                        f"Per-edge: {per_edge_us:.1f}\u00b5s | "
-                        f"Ratio: {r:.5f}"
-                    )
-
-            # Pairwise speed / quality comparisons
-            for i, a1 in enumerate(algos):
-                for a2 in algos[i + 1:]:
-                    t1, t2 = row.get(f"Time_{a1}"), row.get(f"Time_{a2}")
-                    r1, r2 = row.get(f"Ratio_{a1}"), row.get(f"Ratio_{a2}")
-                    if not all(pd.notna(v) for v in [t1, t2, r1, r2]):
-                        continue
-
-                    if t1 > 0 and t2 > 0:
-                        faster = a1 if t1 < t2 else a2
-                        speedup = max(t1, t2) / min(t1, t2)
-                        self.logger.info(f"    -> {faster} is {speedup:.1f}x faster (total time)")
-
-                    better = a1 if r1 < r2 else a2
-                    diff = abs(r1 - r2)
-                    rel = diff / max(r1, r2) * 100
-                    self.logger.info(
-                        f"    -> {better} has {diff:.5f} better compression ({rel:.1f}% relative)"
-                    )
-
-        # Update cost analysis
-        self._print_update_cost(df, algos)
-
-    def _print_update_cost(self, df, algos):
-        """
-        Compare the cost of keeping summaries up to date at every checkpoint.
-
-        Incremental algorithms process edges as a stream, so when the graph
-        changes they only need to process the NEW edges.  Batch algorithms
-        must re-run from scratch on the entire current snapshot.
-
-        - Incremental update cost at checkpoint k:
-              time(k) - time(k-1)   (only the new edges since last checkpoint)
-        - Batch update cost at checkpoint k:
-              time(k)               (full re-run on snapshot)
-
-        Total cost to stay current at ALL checkpoints:
-        - Incremental: time(last_checkpoint)  (stream covers all prior states)
-        - Batch: sum of time(k) for all k     (must re-run each time)
-        """
-        datasets = df["Dataset"].unique()
-        checkpoints = sorted(df["Checkpoint"].unique())
-        if len(checkpoints) < 2:
-            return
-
-        self.logger.info("\n" + "=" * 10 + " UPDATE COST ANALYSIS " + "=" * 10)
-        self.logger.info(
-            "  Incremental: cost = new edges only (time[k] - time[k-1])"
-        )
-        self.logger.info(
-            "  Batch: cost = full re-run from scratch (time[k])\n"
-        )
-
-        for dataset in datasets:
-            ds = df[df["Dataset"] == dataset].sort_values("Checkpoint")
-            self.logger.info(f"  [{dataset}]")
-
-            # Per-checkpoint update cost table
-            update_rows = []
-            for algo in algos:
-                t_col = f"Time_{algo}"
-                if t_col not in ds.columns:
-                    continue
-                is_batch = self._algo_type(algo) == "mags"
-                prev_time = 0.0
-                for _, r in ds.iterrows():
-                    t = r.get(t_col)
-                    cp = r["Checkpoint"]
-                    edges = r["Edges"]
-                    if pd.isna(t):
-                        continue
-                    if is_batch:
-                        update_cost = t
-                    else:
-                        update_cost = t - prev_time
-                        prev_time = t
-                    update_rows.append({
-                        "Algorithm": algo,
-                        "Type": "batch" if is_batch else "incremental",
-                        "Checkpoint": f"{cp:.0%}",
-                        "Edges": f"{int(edges):,}",
-                        "Update Cost": f"{update_cost:.3f}s",
-                    })
-
-            if update_rows:
-                tbl = tabulate(
-                    pd.DataFrame(update_rows),
-                    headers="keys", tablefmt="simple", showindex=False,
-                )
-                for line in tbl.split("\n"):
-                    self.logger.info(f"    {line}")
-
-            # Total cost summary
-            self.logger.info("")
-            self.logger.info(f"    Total cost to maintain summary at ALL {len(checkpoints)} checkpoints:")
-            for algo in algos:
-                t_col = f"Time_{algo}"
-                if t_col not in ds.columns:
-                    continue
-                is_batch = self._algo_type(algo) == "mags"
-                valid = ds[ds[t_col].notna()]
-                if valid.empty:
-                    continue
-
-                if is_batch:
-                    cost = valid[t_col].sum()
-                    label = "sum of re-runs"
-                else:
-                    cost = valid[t_col].max()
-                    label = "single stream-through"
-
-                self.logger.info(f"      {algo:<12} {cost:.3f}s ({label})")
-            self.logger.info("")
-
     def finalize(self):
-        csv_file = os.path.join(self.session_dir, "results.csv")
         df = pd.DataFrame(self.results)
-        df.to_csv(csv_file, index=False)
-
         algos = self._detect_algos(df)
 
-        # Save pretty table
-        disp = self._format_display(df, algos)
-        table_str = tabulate(disp, headers="keys", tablefmt="grid", showindex=False)
-        with open(os.path.join(self.session_dir, "table_results.txt"), "w") as f:
-            f.write(table_str)
-
-        # Write per-checkpoint results to DB
         if self.db_conn:
             for _, row in df.iterrows():
                 for algo in algos:
@@ -383,188 +204,6 @@ class IncrementalVsBatchBenchmark(Benchmark):
                         time=t, ratio=r,
                         checkpoint=float(row["Checkpoint"]),
                     )
-
-    def _algo_style(self, algo, color_idx, cmap):
-        """Return visual properties depending on algorithm type."""
-        color = cmap(color_idx)
-        if self._algo_type(algo) == "mags":
-            return dict(
-                color=color, marker="s", linestyle="--", label=f"{algo} (batch)",
-                is_batch=True,
-            )
-        return dict(
-            color=color, marker="o", linestyle="-", label=f"{algo} (incremental)",
-            is_batch=False,
-        )
-
-    def _plot_per_dataset(self, df, algos, y_prefix, ylabel, title, filename,
-                          log_scale=False):
-        datasets = df["Dataset"].unique()
-        n = len(datasets)
-        cols = min(n, 3)
-        rows = max(1, (n + cols - 1) // cols)
-
-        fig, axes = plt.subplots(rows, cols, figsize=(7 * cols, 5 * rows), squeeze=False)
-        cmap = plt.get_cmap("tab10")
-
-        for idx, dataset in enumerate(datasets):
-            ax = axes[idx // cols][idx % cols]
-            ds = df[df["Dataset"] == dataset].sort_values("Checkpoint")
-
-            for i, algo in enumerate(algos):
-                col = f"{y_prefix}{algo}"
-                if col not in ds.columns or ds[col].isna().all():
-                    continue
-
-                style = self._algo_style(algo, i, cmap)
-                valid = ds[ds[col].notna()]
-
-                if style.pop("is_batch"):
-                    ax.scatter(
-                        valid["Checkpoint"], valid[col],
-                        color=style["color"], s=100, marker=style["marker"],
-                        zorder=5, edgecolors="black", linewidths=0.5,
-                        label=style["label"],
-                    )
-                else:
-                    ax.plot(
-                        valid["Checkpoint"], valid[col],
-                        color=style["color"], linewidth=2,
-                        marker=style["marker"], markersize=6,
-                        linestyle=style["linestyle"], label=style["label"],
-                    )
-
-            ax.set_title(dataset, fontsize=13, fontweight="bold")
-            ax.set_xlabel("Ratio of Processed Changes", fontsize=11)
-            ax.set_ylabel(ylabel, fontsize=11)
-            ax.set_xlim(0, 1.05)
-            if log_scale:
-                ax.set_yscale("log")
-            ax.grid(True, linestyle=":", alpha=0.6)
-            ax.legend(fontsize=9, loc="best")
-
-        for idx in range(n, rows * cols):
-            fig.delaxes(axes[idx // cols][idx % cols])
-
-        plt.suptitle(title, fontsize=15, fontweight="bold", y=1.02)
-        plt.tight_layout()
-        path = os.path.join(self.session_dir, filename)
-        plt.savefig(path, format="pdf", bbox_inches="tight")
-        plt.close()
-
-    def _plot_compression_evolution(self, df, algos):
-        """Compression ratio at each checkpoint (Figure 5 style from MoSSo paper)."""
-        self._plot_per_dataset(
-            df, algos,
-            y_prefix="Ratio_",
-            ylabel="Compression Ratio",
-            title="Compression Ratio Evolution (Lower is Better)",
-            filename="compression_ratio_evolution.pdf",
-        )
-
-    def _plot_speed_bar_chart(self, df, algos):
-        """
-        Speed comparison bar chart (MoSSo paper, Figure 4).
-
-        The MoSSo paper compares algorithms by answering:
-        "If the graph receives one new edge, how long to get an updated summary?"
-
-        - Incremental (MoSSo): per-change time = total_time / n_edges
-        - Batch (MAGS): total time (must re-run from scratch)
-
-        Both are plotted in microseconds on a shared log-scale Y-axis.
-        Speedup annotations show how many times faster the best incremental
-        algorithm is compared to the best batch algorithm per dataset.
-        """
-        full = df[df["Checkpoint"] >= 0.99]
-        if full.empty:
-            return
-
-        datasets = full["Dataset"].unique()
-        if len(datasets) == 0:
-            return
-
-        # Hatches to distinguish algorithm types visually (like the paper)
-        hatches = ["", "//", "\\\\", "xx", "..", "++", "oo"]
-        cmap = plt.get_cmap("tab10")
-
-        fig, ax = plt.subplots(figsize=(max(8, len(datasets) * 2.5), 6))
-
-        x = np.arange(len(datasets))
-        n_algos = len(algos)
-        width = 0.8 / n_algos
-
-        algo_values = {}  # algo -> list of values per dataset (in microseconds)
-
-        for i, algo in enumerate(algos):
-            is_batch = self._algo_type(algo) == "mags"
-            values = []
-            for dataset in datasets:
-                ds_row = full[full["Dataset"] == dataset]
-                t = ds_row[f"Time_{algo}"].values[0] if f"Time_{algo}" in ds_row.columns and len(ds_row) > 0 else np.nan
-                n_edges = ds_row["Edges"].values[0] if len(ds_row) > 0 else 0
-
-                if pd.isna(t):
-                    values.append(0)
-                elif is_batch:
-                    values.append(t * 1e6)  # total seconds -> microseconds
-                else:
-                    values.append((t / n_edges * 1e6) if n_edges > 0 else 0)  # per-change us
-
-            algo_values[algo] = (values, is_batch)
-
-            offset = (i - n_algos / 2 + 0.5) * width
-            label = f"{algo} (total time)" if is_batch else f"{algo} (per-change)"
-            hatch = hatches[i % len(hatches)]
-
-            ax.bar(
-                x + offset, values, width,
-                label=label, color=cmap(i), hatch=hatch,
-                edgecolor="black", linewidth=0.5,
-                )
-
-        # Add speedup annotations above each dataset group
-        for j, dataset in enumerate(datasets):
-            inc_vals = []
-            batch_vals = []
-            for algo, (vals, is_batch) in algo_values.items():
-                v = vals[j]
-                if v > 0:
-                    if is_batch:
-                        batch_vals.append(v)
-                    else:
-                        inc_vals.append(v)
-
-            if inc_vals and batch_vals:
-                fastest_inc = min(inc_vals)
-                fastest_batch = min(batch_vals)
-                speedup = fastest_batch / fastest_inc
-
-                # Position annotation above the tallest bar in this group
-                all_vals = [v for v in inc_vals + batch_vals if v > 0]
-                max_val = max(all_vals)
-                ax.text(
-                    j, max_val * 2.0, f"{speedup:,.0f}x",
-                    ha="center", va="bottom",
-                    fontsize=10, fontweight="bold", color="black",
-                       )
-
-        ax.set_yscale("log")
-        ax.set_xlabel("Dataset", fontsize=12)
-        ax.set_ylabel("Execution Time (microseconds, log scale)", fontsize=12)
-        ax.set_title(
-            "Speed: Per-Change Time (incremental) vs Total Time (batch)",
-            fontsize=14, fontweight="bold",
-        )
-        ax.set_xticks(x)
-        ax.set_xticklabels(datasets, fontsize=11)
-        ax.legend(fontsize=10, loc="upper left")
-        ax.grid(True, axis="y", linestyle=":", alpha=0.6)
-
-        plt.tight_layout()
-        path = os.path.join(self.session_dir, "speed_comparison.pdf")
-        plt.savefig(path, format="pdf", bbox_inches="tight")
-        plt.close()
 
 
 if __name__ == "__main__":

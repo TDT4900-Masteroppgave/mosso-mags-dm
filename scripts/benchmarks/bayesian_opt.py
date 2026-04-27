@@ -1,11 +1,9 @@
 import os
 import pandas as pd
-from tabulate import tabulate
 import optuna
 import warnings
 
 from scripts.config import PARAM_CONFIG
-from scripts.plotting import get_pareto_front_2d
 from scripts.benchmark import Benchmark
 import scripts.db as db
 
@@ -41,7 +39,7 @@ class BayesianOptimizationBenchmark(Benchmark):
                 # Fill remaining params with defaults
                 full_params = self._resolve_algo_params(algo_config, resolved_params)
 
-                avg_time, avg_ratio, _, _, _ = self.execute_runner(
+                avg_time, avg_ratio, _, _, = self.execute_runner(
                     algo_name, algo_config, dataset_path, dataset_name, full_params
                 )
 
@@ -82,69 +80,9 @@ class BayesianOptimizationBenchmark(Benchmark):
             for i, trial in enumerate(study.best_trials):
                 self.logger.info(f"    -> [Frontier {i}] Time: {trial.values[0]:.2f}s, Ratio: {trial.values[1]:.4f}, Params: {trial.params}")
 
-    def _get_averaged_dataframe(self):
-        if not self.results: return pd.DataFrame()
-        df = pd.DataFrame(self.results)
-
-        df['Time_Norm'] = df.groupby('Dataset')['Time'].transform(lambda x: x / x.max())
-        df['Ratio_Norm'] = df.groupby('Dataset')['Ratio'].transform(lambda x: x / x.max())
-
-        group_cols = [col for col in df.columns if col not in ['Dataset', 'Time', 'Ratio', 'Time_Norm', 'Ratio_Norm']]
-        avg_df = df.groupby(group_cols, dropna=False).mean(numeric_only=True).reset_index()
-
-        avg_df['Raw_Time_Avg'] = avg_df['Time']
-        avg_df['Raw_Ratio_Avg'] = avg_df['Ratio']
-
-        avg_df['Time'] = avg_df['Time_Norm']
-        avg_df['Ratio'] = avg_df['Ratio_Norm']
-
-        avg_df = avg_df.drop(columns=['Time_Norm', 'Ratio_Norm'])
-        avg_df['Dataset'] = 'GLOBAL_NORMALIZED_AVERAGE'
-
-        return avg_df
-
-    def print_table(self):
-        avg_df = self._get_averaged_dataframe()
-        if avg_df.empty: return
-
-        self.logger.info("\n--- OPTUNA OPTIMIZATION: PARETO FRONTS (Normalized Scale 0.0 - 1.0) ---")
-
-        for algo in avg_df['Algorithm'].unique():
-            algo_df = avg_df[avg_df['Algorithm'] == algo]
-            pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio').sort_values(by=["Ratio", "Time"])
-
-            display_df = pareto_df.rename(columns={
-                'Time': 'Norm_Time_Score',
-                'Ratio': 'Norm_Ratio_Score'
-            })
-
-            cols = ['Algorithm'] + [c for c in display_df.columns if c not in ['Dataset', 'Algorithm', 'Raw_Time_Avg', 'Raw_Ratio_Avg', 'Norm_Time_Score', 'Norm_Ratio_Score']] + ['Raw_Time_Avg', 'Norm_Time_Score', 'Raw_Ratio_Avg', 'Norm_Ratio_Score']
-            display_df = display_df[cols]
-
-            self.logger.info(f"\n[*] Pareto Front for: {algo}")
-            self.logger.info(tabulate(display_df, headers='keys', tablefmt='grid', showindex=False))
-
     def finalize(self):
-        if not self.results: return
         raw_df = pd.DataFrame(self.results)
-        avg_df = self._get_averaged_dataframe()
 
-        table_output = "--- OPTUNA SEARCH RESULTS ---\n"
-
-        for algo in avg_df['Algorithm'].unique():
-            algo_df = avg_df[avg_df['Algorithm'] == algo]
-            pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio').sort_values(by=["Ratio", "Time"])
-
-            table_output += f"\n[*] PARETO FRONT: {algo}\n"
-            table_output += tabulate(pareto_df, headers='keys', tablefmt='grid', showindex=False) + "\n"
-
-        with open(os.path.join(self.session_dir, "table_results.txt"), "w") as f:
-            f.write(table_output)
-
-        csv_file = os.path.join(self.session_dir, "optuna_combined_results.csv")
-        pd.concat([raw_df, avg_df], ignore_index=True).to_csv(csv_file, index=False)
-
-        # Write per-trial results to unified DB
         if self.db_conn:
             param_cols = [c for c in raw_df.columns
                           if c not in {"Dataset", "Algorithm", "Time", "Ratio"}]

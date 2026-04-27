@@ -5,10 +5,13 @@ import os
 import platform
 import subprocess
 import sys
+from typing import List, Optional
 
+import numpy as np
 import pandas as pd
 
-from scripts.config import BENCHMARK_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, VERSIONS_DIR
+from mosso import Tuple
+from scripts.config import BENCHMARK_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, ALGORITHMS_DIR
 
 
 def setup_logging(log_file_path: str):
@@ -82,7 +85,7 @@ def get_fastutil_path() -> str:
 
 
 def setup_directories() -> None:
-    for d in [DATASETS_DIR, OUTPUT_DIR, BENCHMARK_DIR, VERSIONS_DIR]:
+    for d in [DATASETS_DIR, OUTPUT_DIR, BENCHMARK_DIR, ALGORITHMS_DIR]:
         os.makedirs(d, exist_ok=True)
 
 
@@ -117,13 +120,13 @@ def get_datasets_to_run(args) -> list[dict]:
 
 
 def format_dataframe_with_baseline(
-    df: pd.DataFrame,
-    strategies: list[str],
-    baseline_algo: str | None = None,
-    time_prefix: str = "Time_",
-    ratio_prefix: str = "Ratio_",
+        df: pd.DataFrame,
+        strategies: list[str],
+        baseline_algo: str | None = None,
+        time_prefix: str = "Time_",
+        ratio_prefix: str = "Ratio_",
 ) -> pd.DataFrame:
-    """Format time/ratio columns with ±std and optional speedup vs baseline."""
+    """Format time/ratio columns with ±std, CI, and optional speedup vs baseline."""
     display_df = df.copy()
 
     for strat in strategies:
@@ -132,6 +135,12 @@ def format_dataframe_with_baseline(
         t_std_col = f"{time_prefix}std_{strat}"
         r_std_col = f"{ratio_prefix}std_{strat}"
 
+        # New CI columns
+        t_ci_lo_col = f"{time_prefix}ci_lo_{strat}"
+        t_ci_hi_col = f"{time_prefix}ci_hi_{strat}"
+        r_ci_lo_col = f"{ratio_prefix}ci_lo_{strat}"
+        r_ci_hi_col = f"{ratio_prefix}ci_hi_{strat}"
+
         formatted_times, formatted_ratios = [], []
 
         for _, row in df.iterrows():
@@ -139,14 +148,30 @@ def format_dataframe_with_baseline(
             t_std = row.get(t_std_col, 0.0)
             r_std = row.get(r_std_col, 0.0)
 
-            t_str = (
-                f"{t_val:.3f}s ± {t_std:.3f}s" if t_std and t_std > 0 else f"{t_val:.3f}s"
-            ) if pd.notna(t_val) else "N/A"
+            t_ci_lo, t_ci_hi = row.get(t_ci_lo_col), row.get(t_ci_hi_col)
+            r_ci_lo, r_ci_hi = row.get(r_ci_lo_col), row.get(r_ci_hi_col)
 
-            r_str = (
-                f"{r_val:.5f} ± {r_std:.5f}" if r_std and r_std > 0 else f"{r_val:.5f}"
-            ) if pd.notna(r_val) else "N/A"
+            # Build Time string
+            t_str = "N/A"
+            if pd.notna(t_val):
+                t_str = f"{t_val:.3f}s"
+                if t_std_col in df.columns and pd.notna(t_std) and t_std > 0:
+                    t_str += f" ± {t_std:.3f}s"
 
+                if pd.notna(t_ci_lo) and pd.notna(t_ci_hi) and t_std > 0:
+                    t_str += f" [{t_ci_lo:.3f}, {t_ci_hi:.3f}]"
+
+            # Build Ratio string
+            r_str = "N/A"
+            if pd.notna(r_val):
+                r_str = f"{r_val:.5f}"
+                if r_std_col in df.columns and pd.notna(r_std) and r_std > 0:
+                    r_str += f" ± {r_std:.5f}"
+
+                if pd.notna(r_ci_lo) and pd.notna(r_ci_hi) and r_std > 0:
+                    r_str += f" [{r_ci_lo:.5f}, {r_ci_hi:.5f}]"
+
+            # Apply baseline multipliers
             if baseline_algo and baseline_algo in strategies and strat != baseline_algo:
                 t_base = row.get(f"{time_prefix}{baseline_algo}")
                 r_base = row.get(f"{ratio_prefix}{baseline_algo}")
@@ -163,5 +188,32 @@ def format_dataframe_with_baseline(
         display_df[time_col] = formatted_times
         display_df[ratio_col] = formatted_ratios
 
-    std_cols = [c for c in display_df.columns if "_std_" in c]
-    return display_df.drop(columns=std_cols)
+    # Drop all the raw helper columns (std and ci) so they don't render as extra columns in the text table
+    std_ci_cols = [c for c in display_df.columns if "_std_" in c or "_ci_lo_" in c or "_ci_hi_" in c]
+    return display_df.drop(columns=std_ci_cols)
+
+def _run_build(cmd: list[str], cwd=None, env=None):
+    return subprocess.run(
+        cmd, cwd=cwd, env=env, check=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+
+def get_confidence_interval(
+        xs: List[float],
+        stat=np.median,
+        n: int = 10000,
+        alpha: float = 0.05,
+        seed: Optional[int] = None,
+) -> Tuple[float, float]:
+    """Non-parametric bootstrap confidence interval for *stat* applied to *xs*.
+    Returns (lower, upper) bounds at the (alpha/2, 1-alpha/2) percentiles.
+    """
+    if not xs:
+        return float("nan"), float("nan")
+    rng = np.random.default_rng(seed)
+    arr = np.asarray(xs, dtype=float)
+    resampled = rng.choice(arr, size=(n, len(arr)), replace=True)
+    stats = np.apply_along_axis(stat, 1, resampled)
+    lo = float(np.percentile(stats, 100 * alpha / 2))
+    hi = float(np.percentile(stats, 100 * (1 - alpha / 2)))
+    return lo, hi
