@@ -4,14 +4,14 @@ import optuna
 import warnings
 
 from scripts.config import PARAM_CONFIG
-from scripts.benchmark import Benchmark
+from scripts.experiment import Experiment
 import scripts.db as db
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
-class BayesianOptimizationBenchmark(Benchmark):
+class BayesianOptimization(Experiment):
     def __init__(self):
         super().__init__("bayesian")
 
@@ -20,7 +20,7 @@ class BayesianOptimizationBenchmark(Benchmark):
         parser.add_argument("--n-startup", type=int, default=10, help="Initial random explorations before AI kicks in")
         parser.add_argument("--jobs", type=int, default=1, help="Number of parallel threads to run (-1 uses all CPUs)")
 
-    def process(self, dataset_path: str, ds: dict, dataset_name: str):
+    def process(self, dataset_path: str, dataset_short_name: str):
         for algo_name, algo_config in self.active_algos.items():
             template = algo_config.get('template', [])
             if not template:
@@ -40,14 +40,14 @@ class BayesianOptimizationBenchmark(Benchmark):
                 full_params = self._resolve_algo_params(algo_config, resolved_params)
 
                 avg_time, avg_ratio, _, _, = self.execute_runner(
-                    algo_name, algo_config, dataset_path, dataset_name, full_params
+                    algo_name, algo_config, dataset_path, dataset_short_name, full_params
                 )
 
                 if avg_time is None or avg_ratio is None:
                     raise optuna.exceptions.TrialPruned()
 
                 result_entry = {
-                    'Dataset': dataset_name,
+                    'Dataset': dataset_short_name,
                     'Algorithm': algo_name,
                     'Time': avg_time,
                     'Ratio': avg_ratio
@@ -59,7 +59,7 @@ class BayesianOptimizationBenchmark(Benchmark):
 
             # Scope the DB to this session to avoid accumulating stale trials across runs
             db_path = os.path.join(self.session_dir, "optuna_study.db")
-            study_name = f"{algo_name}_{dataset_name}"
+            study_name = f"{algo_name}_{dataset_short_name}"
             sampler = optuna.samplers.TPESampler(
                 n_startup_trials=self.args.n_startup,
                 seed=self.args.seed,
@@ -73,7 +73,7 @@ class BayesianOptimizationBenchmark(Benchmark):
                 load_if_exists=False,  # fresh study per session for reproducibility
             )
 
-            self.logger.info(f"\n[*] Starting Optuna Search for [{algo_name}] on [{dataset_name}] ({self.args.iterations} trials)")
+            self.logger.info(f"\n[*] Starting Optuna Search for [{algo_name}] on [{dataset_short_name}] ({self.args.iterations} trials)")
             study.optimize(objective, n_trials=self.args.iterations, n_jobs=self.args.jobs, show_progress_bar=True)
 
             self.logger.info(f"\n[*] Optuna search complete. Found {len(study.best_trials)} optimal trade-off configurations.")
@@ -98,4 +98,4 @@ class BayesianOptimizationBenchmark(Benchmark):
 
 
 if __name__ == "__main__":
-    BayesianOptimizationBenchmark().run()
+    BayesianOptimization().run()

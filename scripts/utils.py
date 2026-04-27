@@ -5,13 +5,12 @@ import os
 import platform
 import subprocess
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
-from mosso import Tuple
-from scripts.config import BENCHMARK_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, ALGORITHMS_DIR
+from scripts.config import EXPERIMENT_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, ALGORITHMS_DIR
 
 
 def setup_logging(log_file_path: str):
@@ -85,7 +84,7 @@ def get_fastutil_path() -> str:
 
 
 def setup_directories() -> None:
-    for d in [DATASETS_DIR, OUTPUT_DIR, BENCHMARK_DIR, ALGORITHMS_DIR]:
+    for d in [DATASETS_DIR, OUTPUT_DIR, EXPERIMENT_DIR, ALGORITHMS_DIR]:
         os.makedirs(d, exist_ok=True)
 
 

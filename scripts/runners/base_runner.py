@@ -18,6 +18,7 @@ class AlgorithmRunner(ABC):
         self.config = config
         self.logger = logger
         self.session_dir = Path(session_dir)
+        self.run_log_dir = (self.session_dir / "run_log").mkdir(parents=True, exist_ok=True)
         self.target_dir = Path(self.config.get("target_dir", ALGORITHMS_DIR / algo_name))
         self.is_local = str(self.target_dir) == "."
 
@@ -27,6 +28,14 @@ class AlgorithmRunner(ABC):
 
     @abstractmethod
     def compile_logic(self) -> None:
+        pass
+
+    @abstractmethod
+    def build_command(self, dataset_path: str, graph_output_path: str, parameters: list[str]) -> list[str]:
+        pass
+
+    @abstractmethod
+    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
         pass
 
     def _run_cmd(self, cmd: list[str], cwd=None, env=None):
@@ -66,14 +75,6 @@ class AlgorithmRunner(ABC):
                 shutil.rmtree(self.target_dir)
             raise RuntimeError(f"Compilation failed for {self.algo_name}.") from e
 
-    @abstractmethod
-    def build_command(self, dataset_path: str, graph_output_path: str, parameters: list[str]) -> list[str]:
-        pass
-
-    @abstractmethod
-    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
-        pass
-
     def run_single(
             self,
             format_dataset_path: str,
@@ -81,17 +82,18 @@ class AlgorithmRunner(ABC):
             parameters: list
     ) -> tuple[Optional[float], Optional[float]]:
         """Execute one trial. Returns (time, ratio, peak_rss_mb)."""
-        runs_dir = self.session_dir / "runs"
+        run_log_dir = self.session_dir / "run_log"
+        run_log_dir.mkdir(parents=True, exist_ok=True)
         graph_output_path = self.session_dir / output_name
 
         cmd = self.build_command(format_dataset_path, str(graph_output_path), parameters)
-        self.logger.debug(f"-> [{self.algo_name}] Running command: {' '.join(cmd)}")
+        self.logger.debug(f"[{self.algo_name}] Running command: {' '.join(cmd)}")
 
         try:
             result = self._run_cmd(cmd)
             parsed_time, parsed_ratio = self.parse_output(result.stdout)
 
-            run_log_file = runs_dir / f"{output_name}.log"
+            run_log_file = run_log_dir / f"{output_name}.log"
             with open(run_log_file, "w", encoding="utf-8") as f:
                 f.write(f"EXECUTION COMMAND:\n{' '.join(cmd)}\n\n")
                 f.write("=" * 20 + " STDOUT " + "=" * 20 + "\n")
@@ -139,12 +141,12 @@ class AlgorithmRunner(ABC):
         )
 
     def _iterate_trials(
-            self, format_dataset_path: str, base_output_name: str, runs: int,
+            self, format_dataset_path: str, base_output_name: str, n_runs: int,
             parameters: list[str],
     ) -> tuple[list, list]:
         times, ratios = [], []
-        for i in range(runs):
-            self.logger.debug(f"Iter {i + 1}/{runs} for {base_output_name}...")
+        for i in range(n_runs):
+            self.logger.debug(f"Iter {i + 1}/{n_runs} for {base_output_name}...")
             t, r = self.run_single(format_dataset_path, f"{base_output_name}_run{i + 1}", parameters)
             if t is not None and r is not None:
                 times.append(t)
@@ -161,14 +163,14 @@ class AlgorithmRunner(ABC):
             self,
             dataset_path: str,
             base_output_name: str,
-            runs: int,
+            n_runs: int,
             parameters: list,
     ) -> tuple[float | None, float | None, list, list]:
         """Execute multiple trials."""
         format_dataset_path = self.format_dataset(dataset_path)
-        #if runs > 1:
+        #if n_runs > 1:
         #    self._warmup(format_dataset_path, base_output_name, parameters)
-        times, ratios = self._iterate_trials(format_dataset_path, base_output_name, runs, parameters)
+        times, ratios = self._iterate_trials(format_dataset_path, base_output_name, n_runs, parameters)
         avg_t, avg_r = self._aggregate(times, ratios)
         return avg_t, avg_r, times, ratios
 

@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, BENCHMARK_DIR
+from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, EXPERIMENT_DIR
 from scripts.utils import (
     setup_logging, setup_directories, get_datasets_to_run,
     get_repo_info, get_env_info, format_dataframe_with_baseline,
@@ -26,7 +26,7 @@ from scripts.runners.base_runner import get_runner
 import scripts.db as db
 
 
-class Benchmark(ABC):
+class Experiment(ABC):
     def __init__(self, benchmark_type: str):
         self.benchmark_type = benchmark_type
         self.results: list[dict[str, Any]] = []
@@ -36,11 +36,9 @@ class Benchmark(ABC):
         self.args = self._parse_arguments()
 
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.session_dir = Path(BENCHMARK_DIR) / self.benchmark_type / f"run_{self.timestamp}"
-        self.runs_dir = self.session_dir / "runs"
+        self.session_dir = Path(EXPERIMENT_DIR) / self.benchmark_type / f"run_{self.timestamp}"
 
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        self.runs_dir.mkdir(parents=True, exist_ok=True)
 
         log_file = self.session_dir / "execution.log"
         self.logger = setup_logging(str(log_file))
@@ -161,15 +159,14 @@ class Benchmark(ABC):
 
         flattened_cols = []
         for agg_func, metric, algo in wide_df.columns:
-            m_cap = metric.capitalize()
             if agg_func == 'mean':
-                flattened_cols.append(f"{m_cap}_{algo}")
+                flattened_cols.append(f"{metric}_{algo}")
             elif agg_func == 'std':
-                flattened_cols.append(f"{m_cap}_std_{algo}")
+                flattened_cols.append(f"{metric}_std_{algo}")
             elif agg_func == 'ci_lo':
-                flattened_cols.append(f"{m_cap}_ci_lo_{algo}")
+                flattened_cols.append(f"{metric}_ci_lo_{algo}")
             elif agg_func == 'ci_hi':
-                flattened_cols.append(f"{m_cap}_ci_hi_{algo}")
+                flattened_cols.append(f"{metric}_ci_hi_{algo}")
 
         wide_df.columns = flattened_cols
         wide_df = wide_df.reset_index()
@@ -180,26 +177,29 @@ class Benchmark(ABC):
         algorithms = long_df['algorithm'].unique().tolist()
         for algo in algorithms:
             for metric in dynamic_metrics:
-                m_cap = metric.capitalize()
-                col = f"{m_cap}_{algo}"
+                col = f"{metric}_{algo}"
                 if col in wide_df.columns:
                     vals = wide_df[col].dropna().tolist()
                     if len(vals) >= 2:
                         lo, hi = get_confidence_interval(vals, stat=np.mean, seed=self.args.seed)
-                        avg_row[f"{m_cap}_ci_lo_{algo}"] = lo
-                        avg_row[f"{m_cap}_ci_hi_{algo}"] = hi
-                    else:
-                        avg_row[f"{m_cap}_ci_lo_{algo}"] = np.nan
-                        avg_row[f"{m_cap}_ci_hi_{algo}"] = np.nan
+                        avg_row[f"{metric}_ci_lo_{algo}"] = lo
+                        avg_row[f"{metric}_ci_hi_{algo}"] = hi
+                        avg_row[f"{metric}_std_{algo}"] = np.std(vals)
 
         table_df = pd.concat([wide_df, pd.DataFrame([avg_row])], ignore_index=True)
 
         strategies = [
-            col.replace("Time_", "") for col in table_df.columns
-            if col.startswith("Time_") and not col.startswith("Time_ci") and not col.startswith("Time_std")
+            col.replace("time_", "") for col in table_df.columns
+            if col.startswith("time_") and not col.startswith("time_ci") and not col.startswith("time_std")
         ]
 
-        display_df = format_dataframe_with_baseline(table_df, strategies, self.args.baseline)
+        display_df = format_dataframe_with_baseline(
+            table_df,
+            strategies,
+            self.args.baseline,
+            time_prefix="time_",
+            ratio_prefix="ratio_"
+        )
 
         res_table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
 
@@ -216,7 +216,6 @@ class Benchmark(ABC):
             text_console.print(res_table)
 
         table_str = capture.get()
-        # Log to execution log
         for line in table_str.split('\n'):
             if line.strip():
                 self.logger.debug(line)
@@ -270,12 +269,12 @@ class Benchmark(ABC):
             t_avg, r_avg, t_list, r_list = runner.run_multiple(
                 dataset_path=dataset_path,
                 base_output_name=f"{algo_name}_{dataset_name}_{self.timestamp}",
-                runs=self.args.runs,
+                n_runs=self.args.runs,
                 parameters=list(parameters.values())
             )
 
         if t_avg is None or r_avg is None or t_list is None or r_list is None:
-            self.logger.warning(f"\t=> {algo_name} failed to run with params: {parameters}")
+            self.logger.warning(f"=> {algo_name} failed to run with params: {parameters}")
             return None, None, None, None
 
         self.print_metrics(algo_name, t_avg, r_avg, t_list, r_list)
@@ -357,7 +356,7 @@ class Benchmark(ABC):
         return args
 
     def _build_algorithms(self) -> None:
-        self.console.rule("[bold]Building Algorithms[/bold]")
+        self.console.rule("[bold]Building[/bold]")
         for algo_name, config in self.active_algos.items():
             try:
                 runner = get_runner(algo_name, self.logger, str(self.session_dir))

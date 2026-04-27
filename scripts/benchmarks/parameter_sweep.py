@@ -1,10 +1,10 @@
 from typing import Any
 
 from scripts.config import PARAM_CONFIG
-from scripts.benchmark import Benchmark
+from scripts.experiment import Experiment
 
 
-class ParameterSweepBenchmark(Benchmark):
+class ParameterSweep(Experiment):
     def __init__(self):
         super().__init__("sweep")
         self.all_times_dict, self.all_ratios_dict = {}, {}
@@ -50,7 +50,7 @@ class ParameterSweepBenchmark(Benchmark):
         return runs
 
 def main():
-    ParameterSweepBenchmark().run()
+    ParameterSweep().run()
 
 if __name__ == "__main__":
-    ParameterSweepBenchmark().run()
+    ParameterSweep().run()

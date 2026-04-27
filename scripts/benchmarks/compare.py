@@ -1,9 +1,8 @@
-import json
 from typing import Any
 
-from scripts.benchmark import Benchmark
+from scripts.experiment import Experiment
 
-class CompareBenchmark(Benchmark):
+class Compare(Experiment):
     def __init__(self):
         super().__init__("compare")
 
@@ -34,7 +33,7 @@ class CompareBenchmark(Benchmark):
         return runs
 
 def main():
-    CompareBenchmark().run()
+    Compare().run()
 
 
 if __name__ == "__main__":

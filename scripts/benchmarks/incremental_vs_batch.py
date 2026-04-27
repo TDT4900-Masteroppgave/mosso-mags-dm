@@ -19,13 +19,13 @@ import re
 
 import pandas as pd
 
-from scripts.benchmark import Benchmark
+from scripts.experiment import Experiment
 from scripts.config import ALGORITHMS
 from scripts.datasets import create_partial_dataset
 import scripts.db as db
 
 
-class IncrementalVsBatchBenchmark(Benchmark):
+class IncrementalVsBatch(Experiment):
 
     DEFAULT_CHECKPOINTS = [0.2, 0.4, 0.6, 0.8, 1.0]
     _MOSSO_LOG_PATTERN = re.compile(r"(\d+)\s*:\s*Elapsed time\s*:\s*([\d.]+)\s*:\s*ratio\s*:\s*([\d.]+)")
@@ -207,4 +207,4 @@ class IncrementalVsBatchBenchmark(Benchmark):
 
 
 if __name__ == "__main__":
-    IncrementalVsBatchBenchmark().run()
+    IncrementalVsBatch().run()

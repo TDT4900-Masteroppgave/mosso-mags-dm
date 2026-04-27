@@ -305,7 +305,7 @@ def _run_reps_interactive(
 ) -> None:
     from datetime import datetime
     import pandas as pd
-    from scripts.config import ALGORITHMS, DATASETS, BENCHMARK_DIR, PARAM_CONFIG
+    from scripts.config import ALGORITHMS, DATASETS, EXPERIMENT_DIR, PARAM_CONFIG
     from scripts.datasets import download_dataset
     from scripts.runners.base_runner import get_runner
     import scripts.db as db
@@ -320,7 +320,7 @@ def _run_reps_interactive(
         return
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    reps_session_dir = Path(BENCHMARK_DIR) / "reps" / f"run_{timestamp}"
+    reps_session_dir = Path(EXPERIMENT_DIR) / "reps" / f"run_{timestamp}"
     reps_session_dir.mkdir(parents=True, exist_ok=True)
 
     logger = _make_logger()
@@ -388,7 +388,7 @@ def _run_reps_interactive(
             _, _, times, ratios = runner.run_multiple(
                 dataset_path=dataset_path,
                 base_output_name=f"{algo_name}_{dataset_name}_{timestamp}",
-                runs=n_reps,
+                n_runs=n_reps,
                 parameters=merged,
                 template=template,
             )
