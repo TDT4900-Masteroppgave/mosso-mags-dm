@@ -19,4 +19,35 @@ def read_results(conn: sqlite3.Connection) -> pd.DataFrame:
     df = pd.concat([df.drop('parameters', axis=1), params_df], axis=1)
     return df
 
+def write_metadata(conn: sqlite3.Connection, manifest: dict) -> None:
+    """Writes the experiment metadata to a single-row metadata table."""
+    db_manifest = {}
+    for key, value in manifest.items():
+        # Convert nested dictionaries and lists to JSON strings for SQLite storage
+        if isinstance(value, (dict, list)):
+            db_manifest[key] = json.dumps(value)
+        else:
+            db_manifest[key] = value
 
+    df = pd.DataFrame([db_manifest])
+    df.to_sql("metadata", conn, if_exists="replace", index=False)
+
+def read_metadata(conn: sqlite3.Connection) -> dict:
+    """Reads the metadata from the DB and parses JSON strings back to dicts."""
+    try:
+        df = pd.read_sql("SELECT * FROM metadata", conn)
+    except pd.io.sql.DatabaseError:
+        return {} # Table doesn't exist
+
+    if df.empty:
+        return {}
+
+    manifest = df.iloc[0].to_dict()
+    for key, value in manifest.items():
+        if isinstance(value, str):
+            try:
+                # Attempt to parse JSON strings back into Python lists/dicts
+                manifest[key] = json.loads(value)
+            except json.JSONDecodeError:
+                pass
+    return manifest

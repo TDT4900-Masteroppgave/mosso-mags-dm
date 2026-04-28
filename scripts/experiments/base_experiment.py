@@ -1,4 +1,3 @@
-import json
 import random
 import argparse
 from abc import ABC, abstractmethod
@@ -79,6 +78,7 @@ class Experiment(ABC):
         setup_directories()
 
         self.db_conn = db.init_db(self.session_dir)
+        self.write_metadata()
         self.print_parameters()
         self._build_algorithms()
 
@@ -193,18 +193,37 @@ class Experiment(ABC):
 
         return t_avg, r_avg, t_list, r_list
 
-    def _write_manifest(self) -> None:
-        """Write metadata.json to the session dir for reproducibility tracing."""
-        algo_shas = {}
-        for algo_name, algo_cfg in self.active_algos.items():
-            target = algo_cfg.get("target_dir", ".")
-            info = get_repo_info(target)
-            algo_shas[algo_name] = {
+    def _get_algorithm_metadata(self) -> dict:
+        """Extracts repository and version info for active algorithms."""
+        meta = {}
+        for name, cfg in self.active_algos.items():
+            info = get_repo_info(cfg.get("target_dir", "."))
+            meta[name] = {
                 "commit": info["commit"],
-                "branch": algo_cfg.get("branch", info["branch"]),
-                "repo": algo_cfg.get("repo", "local"),
+                "branch": cfg.get("branch", info["branch"]),
+                "repo": cfg.get("repo", "local"),
                 "dirty": info["dirty"],
             }
+        return meta
+
+    def _get_dataset_metadata(self) -> list[dict]:
+        """Extracts core topology metrics for the active datasets."""
+        if not self.datasets_to_run:
+            return []
+
+        # Using a list comprehension makes this clean and highly readable
+        return [{
+            "short_name": ds.get("short_name", "N/A"),
+            "filename": ds.get("filename", "N/A"),
+            "nodes": ds.get("meta", {}).get("nodes", "N/A"),
+            "edges": ds.get("meta", {}).get("edges", "N/A")
+        } for ds in self.datasets_to_run]
+
+    def write_metadata(self) -> None:
+        """Aggregates experiment state and writes it to the database."""
+        if not self.db_conn:
+            self.logger.warning("No DB connection; skipping metadata write.")
+            return
 
         manifest = {
             "benchmark_type": self.benchmark_type,
@@ -212,13 +231,13 @@ class Experiment(ABC):
             "seed": self.args.seed,
             "cli_args": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(self.args).items()},
             "this_repo": get_repo_info(),
-            "algorithms": algo_shas,
             "environment": get_env_info(),
+            "algorithms": self._get_algorithm_metadata(),
+            "datasets": self._get_dataset_metadata(),
         }
-        manifest_path = self.session_dir / "metadata.json"
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2, default=str)
-        self.logger.debug(f"Manifest written to {manifest_path}")
+
+        db.write_metadata(self.db_conn, manifest)
+        self.logger.debug("Metadata successfully written to db")
 
     def _parse_arguments(self) -> argparse.Namespace:
         """Builds the parser, collects custom args, and parses them."""
