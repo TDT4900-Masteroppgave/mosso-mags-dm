@@ -1,104 +1,124 @@
-import re
 import json
-from pathlib import Path
-
 from scripts.config import DATASETS
 from scripts.experiments.base_experiment import Experiment
-from scripts.datasets import create_partial_dataset
+from pathlib import Path
 
+def create_partial_dataset(
+        dataset_path: str,
+        fraction: float,
+        total_edges: int,
+        logger=None,
+) -> str:
+    """Write a file containing the first (fraction * total_edges) unique edges.
+
+    Cached: if the partial file already exists it is returned immediately.
+    Writes are atomic to prevent corrupted cache files if interrupted.
+    """
+    target_edges = int(total_edges * fraction)
+
+    dataset_file = Path(dataset_path)
+    partial_dir = dataset_file.parent / "partial"
+    partial_dir.mkdir(parents=True, exist_ok=True)
+
+    partial_path = partial_dir / f"p{int(fraction * 100)}_{dataset_file.name}"
+
+    if partial_path.exists():
+        if logger:
+            logger.debug(f"Using cached partial dataset: {partial_path}")
+        return str(partial_path)
+
+    if logger:
+        logger.info(f"Generating partial dataset ({fraction*100:.0f}%): {partial_path}")
+
+    edges_written = 0
+    seen: set[tuple[int, int]] = set()
+
+    tmp_path = partial_path.with_suffix('.tmp')
+
+    with open(dataset_file, "r", encoding="utf-8") as f_in, \
+            open(tmp_path, "w", encoding="utf-8") as f_out:
+
+        for line in f_in:
+            if line.startswith(("#", "%")):
+                continue
+
+            # 3. Use split() instead of Regex for a massive speed boost
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+
+            try:
+                u, v = int(parts[0]), int(parts[1])
+            except ValueError:
+                continue  # skip lines that don't start with two integers
+
+            if u == v:
+                continue # self loop
+
+            # undirected graph, normalize edge
+            edge = (min(u, v), max(u, v))
+
+            if edge not in seen:
+                seen.add(edge)
+                f_out.write(line)
+                edges_written += 1
+
+                if edges_written >= target_edges:
+                    break
+
+    tmp_path.rename(partial_path)
+
+    return str(partial_path)
 
 class CompressionOverTime(Experiment):
     DEFAULT_CHECKPOINTS = [0.2, 0.4, 0.6, 0.8, 1.0]
 
     def __init__(self):
-        super().__init__("compression_time")
-
-        # Regex to catch the interval outputs from the Mosso Java/C++ binaries
-        self.log_pattern = re.compile(r"(\d+)\s*:\s*Elapsed time\s*:\s*([\d.]+)\s*:\s*ratio\s*:\s*([\d.]+)")
+        super().__init__("cot")
 
     def add_custom_args(self, parser):
         parser.add_argument(
             "--checkpoints", nargs="+", type=float,
             default=self.DEFAULT_CHECKPOINTS,
-            help="Edge stream fractions to evaluate batch algorithms at (default: 0.2 0.4 0.6 0.8 1.0)",
+            help="Edge stream fractions to evaluate algorithms at (default: 0.2 0.4 0.6 0.8 1.0)",
         )
 
-    def process(self, dataset_path: str, dataset_short_name: str) -> None:
-        total_edges = DATASETS.get(dataset_short_name, {}).get("meta", {}).get("edges", 1)
-        checkpoints = sorted(self.args.checkpoints)
+    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+        metrics: list[dict] = []
+        checkpoints = getattr(self.args, "checkpoints", self.DEFAULT_CHECKPOINTS)
+        total_edges = DATASETS[dataset_short_name]["meta"]["edges"]
 
-        for algo_name, algo_config in self.active_algos.items():
-            params = self._resolve_algo_params(algo_config)
-            algo_type = algo_config.get("type", "mosso")
+        for checkpoint in checkpoints:
+            self.console.print(f"[bold yellow]--- Evaluating Checkpoint: {checkpoint*100:.0f}% ---[/bold yellow]")
 
-            if algo_type == "mags":
-                self.logger.info(f"\t[*] Running Batch Algorithm: {algo_name}")
+            partial_dataset_path = create_partial_dataset(dataset_path, checkpoint, total_edges)
+            if not partial_dataset_path:
+                self.logger.error(f"Failed to create partial dataset for {checkpoint}")
+                continue
 
-                for cp in checkpoints:
-                    n_edges = int(total_edges * cp)
+            for algo_name, algo_config in self.active_algos.items():
+                params = self._resolve_algo_params(algo_config)
 
-                    # Get or create the partial dataset (100% uses original file)
-                    if cp >= 1.0:
-                        partial_path = dataset_path
-                    else:
-                        partial_path = create_partial_dataset(dataset_path, cp, total_edges, self.logger)
+                t_avg, r_avg, t_list, r_list = self.execute_runner(
+                    algo_name=algo_name,
+                    dataset_path=partial_dataset_path,
+                    params=params,
+                    dataset_short_name=f"{dataset_short_name}_{checkpoint}",
+                )
 
-                    # 1. Get raw data from base class
-                    # Note: We pass a suffixed name (e.g., "YT_p20") so log files don't overwrite each other
-                    raw_runs = self.execute_runner(algo_name, partial_path, f"{dataset_short_name}_p{int(cp * 100)}", params)
-                    if not raw_runs:
-                        continue
+                if r_avg is not None:
+                    metrics.append({
+                        "dataset": dataset_short_name,
+                        "algorithm": algo_name,
+                        "change_ratio": checkpoint,
+                        "ratio": r_avg,
+                        "parameters": json.dumps(params),
+                    })
 
-                    # 2. Decorate with checkpoint metadata
-                    for row in raw_runs:
-                        row["dataset"] = dataset_short_name  # Revert the suffix so it matches in DB
-                        row["edges_processed"] = n_edges
-                        row["fraction"] = cp
-                        self.results.append(row)
-
-            else:
-                self.logger.info(f"\t[*] Running Incremental Algorithm: {algo_name}")
-
-                # 1. Run once on 100% dataset
-                raw_runs = self.execute_runner(algo_name, dataset_path, dataset_short_name, params)
-                if not raw_runs:
-                    continue
-
-                # 2. Extract the intermediate points by parsing the logs
-                for run_idx in range(1, self.args.runs + 1):
-                    log_file = self.session_dir / "run_log" / f"{algo_name}_{dataset_short_name}_{self.timestamp}_run{run_idx}.log"
-
-                    if not log_file.exists():
-                        self.logger.warning(f"Could not find log file: {log_file}")
-                        continue
-
-                    with open(log_file, "r", encoding="utf-8") as f:
-                        for line in f:
-                            match = self.log_pattern.search(line)
-                            if match:
-                                edges_processed = int(match.group(1))
-
-                                # Append intermediate interval point
-                                self.results.append({
-                                    "dataset": dataset_short_name,
-                                    "algorithm": algo_name,
-                                    "run": run_idx,
-                                    "time": float(match.group(2)),
-                                    "ratio": float(match.group(3)),
-                                    "edges_processed": edges_processed,
-                                    "fraction": edges_processed / total_edges,
-                                    "parameters": json.dumps(params)
-                                })
-
-                # 3. Append the statistically complete final run at the 100% mark
-                for row in raw_runs:
-                    row["edges_processed"] = total_edges
-                    row["fraction"] = 1.0
-                    self.results.append(row)
+        return metrics
 
 def main():
     CompressionOverTime().run()
 
-
 if __name__ == "__main__":
-    CompressionOverTime().run()
+    main()

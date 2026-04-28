@@ -80,7 +80,7 @@ class BayesianOptimization(Experiment):
             for i, trial in enumerate(study.best_trials):
                 self.logger.info(f"    -> [Frontier {i}] Time: {trial.values[0]:.2f}s, Ratio: {trial.values[1]:.4f}, Params: {trial.params}")
 
-    def finalize(self):
+    def print_table(self):
         raw_df = pd.DataFrame(self.results)
 
         if self.db_conn:
