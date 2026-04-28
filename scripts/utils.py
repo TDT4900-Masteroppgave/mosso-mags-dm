@@ -114,61 +114,36 @@ def get_datasets_to_run(args) -> list[dict]:
     return datasets
 
 def format_long_dataframe_with_baseline(df: pd.DataFrame, baseline_algo: str | None = None) -> pd.DataFrame:
-    """Formats a long-form DataFrame with baseline speedup multipliers and CIs."""
-    display_df = df.copy()
+    """Aggregates raw results into averages and formats them with baseline speedup multipliers."""
+    if df.empty:
+        return df
 
-    base_time_map, base_ratio_map = {}, {}
-    if baseline_algo and baseline_algo in df['algorithm'].values:
-        baseline_data = df[df['algorithm'] == baseline_algo].groupby('dataset')[['time', 'ratio']].mean()
-        base_time_map = baseline_data['time'].to_dict()
-        base_ratio_map = baseline_data['ratio'].to_dict()
+    summary = df.groupby(['dataset', 'algorithm'], as_index=False)[['time', 'ratio']].mean()
 
-    formatted_times = []
-    formatted_ratios = []
+    baselines = {}
+    if baseline_algo and baseline_algo in summary['algorithm'].values:
+        baselines = summary[summary['algorithm'] == baseline_algo].set_index('dataset').to_dict('index')
 
-    for _, row in display_df.iterrows():
-        t_val = row.get('time')
-        r_val = row.get('ratio')
-        dataset = row.get('dataset')
-        algo = row.get('algorithm')
+    def format_row(row):
+        t, r = row['time'], row['ratio']
+        t_str, r_str = f"{t:.3f}s", f"{r:.5f}"
 
-        # Extract DB Confidence Intervals
-        t_lo, t_hi = row.get('time_ci_lo'), row.get('time_ci_hi')
-        r_lo, r_hi = row.get('ratio_ci_lo'), row.get('ratio_ci_hi')
+        base = baselines.get(row['dataset'])
+        if base and row['algorithm'] != baseline_algo:
+            # Append baseline multipliers
+            if t > 0 and base['time'] > 0:
+                t_str += f" [green]({base['time'] / t:.2f}x)[/green]"
+            if base['ratio'] > 0:
+                r_str += f" [green]({r / base['ratio']:.2f}x)[/green]"
 
-        # Format Time with CI and speedup
-        t_str = "N/A"
-        if pd.notna(t_val):
-            t_str = f"{t_val:.3f}s"
-            if pd.notna(t_lo) and pd.notna(t_hi):
-                t_str += f" [{t_lo:.3f}, {t_hi:.3f}]"
+        return pd.Series({
+            "Dataset": str(row['dataset']).capitalize(),
+            "Algorithm": row['algorithm'],
+            "Avg Time": t_str,
+            "Avg Ratio": r_str
+        })
 
-            if baseline_algo and algo != baseline_algo and dataset in base_time_map:
-                t_base = base_time_map[dataset]
-                if t_val > 0 and t_base > 0:
-                    t_str += f" ({t_base / t_val:.2f}x)"
-
-        # Format Ratio with CI and multiplier
-        r_str = "N/A"
-        if pd.notna(r_val):
-            r_str = f"{r_val:.5f}"
-            if pd.notna(r_lo) and pd.notna(r_hi):
-                r_str += f" [{r_lo:.5f}, {r_hi:.5f}]"
-
-            if baseline_algo and algo != baseline_algo and dataset in base_ratio_map:
-                r_base = base_ratio_map[dataset]
-                if r_base > 0:
-                    r_str += f" ({r_val / r_base:.2f}x)"
-
-        formatted_times.append(t_str)
-        formatted_ratios.append(r_str)
-
-    display_df['time'] = formatted_times
-    display_df['ratio'] = formatted_ratios
-
-    # Drop the raw CI columns from the final terminal table to keep it clean
-    cols_to_drop = [c for c in display_df.columns if '_ci_' in c]
-    return display_df.drop(columns=cols_to_drop, errors='ignore')
+    return summary.apply(format_row, axis=1).sort_values(by=["Dataset", "Algorithm"])
 
 def _run_build(cmd: list[str], cwd=None, env=None):
     return subprocess.run(

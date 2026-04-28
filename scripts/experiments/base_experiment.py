@@ -48,7 +48,7 @@ class Experiment(ABC):
         return
 
     @abstractmethod
-    def process(self, dataset_path: str, dataset_short_name: str) -> None:
+    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
         pass
 
     def run(self) -> None:
@@ -97,10 +97,12 @@ class Experiment(ABC):
             self.console.print(
                 f"[bold cyan][{i}/{n}][/bold cyan] {short_name} ({self.args.runs} run{'s' if self.args.runs != 1 else ''})")
 
-            self.process(dataset_path, short_name)
-            if not self.results:
+            metrics = self.process(dataset_path, short_name)
+            if not metrics:
                 self.logger.warning(f"No results returned for {filename}")
                 continue
+
+            self.results.extend(metrics)
 
     def _handle_results(self) -> None:
         if not self.results:
@@ -120,26 +122,47 @@ class Experiment(ABC):
             self.logger.warning("No database connection. Skipping table generation.")
             return
 
-        table_df = db.read_results(self.db_conn)
-        if table_df.empty:
+        raw_df = db.read_results(self.db_conn)
+        if raw_df.empty:
             return
 
-        res_table = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan")
+        raw_display_df = raw_df.copy()
 
-        for col in table_df.columns:
-            res_table.add_column(str(col).capitalize())
+        float_cols = raw_display_df.select_dtypes(include=['float', 'float32', 'float64']).columns
+        for col in float_cols:
+            raw_display_df[col] = raw_display_df[col].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
 
-        for _, row in table_df.iterrows():
-            res_table.add_row(*[str(val) if pd.notna(val) else "" for val in row])
+        from scripts.utils import format_long_dataframe_with_baseline
 
-        self.console.print(res_table)
+        raw_table = Table(title="All Results", box=box.SIMPLE, show_header=True, header_style="bold cyan")
+        for col in raw_display_df.columns:
+            raw_table.add_column(str(col).capitalize())
 
+        for _, row in raw_display_df.iterrows():
+            raw_table.add_row(*[str(val) if pd.notna(val) else "" for val in row])
+
+        self.console.print(raw_table)
+        self.console.print()
+
+        summary_df = format_long_dataframe_with_baseline(raw_df, getattr(self.args, 'baseline', None))
+
+        summary_table = Table(title="Averages & Baseline Comparison", box=box.SIMPLE, show_header=True, header_style="bold magenta")
+        for col in summary_df.columns:
+            summary_table.add_column(str(col))
+
+        for _, row in summary_df.iterrows():
+            summary_table.add_row(*row.astype(str).tolist())
+
+        self.console.print(summary_table)
+
+        # Capture plain text (without color tags) for the log file
         text_console = Console(width=250, color_system=None)
         with text_console.capture() as capture:
-            text_console.print(res_table)
+            text_console.print(raw_table)
+            text_console.print("\n")
+            text_console.print(summary_table)
 
-        table_str = capture.get()
-        for line in table_str.split('\n'):
+        for line in capture.get().splitlines():
             if line.strip():
                 self.logger.debug(line)
 
@@ -157,20 +180,8 @@ class Experiment(ABC):
             cmd[param] = str(param_val)
         return cmd
 
-    def print_metrics(self, algo_name: str, t_avg: float, r_avg: float, t_list: list[float],
-                      r_list: list[float], t_std: float, r_std: float, t_lo: float, t_hi: float,
-                      r_lo: float, r_hi: float) -> None:
-        """Prints the metrics in a table."""
-        if len(t_list) > 1 and len(r_list) > 1:
-            t_ci_str = f"CI=[{t_lo:.3f},{t_hi:.3f}]" if t_lo is not None and t_hi is not None else ""
-            r_ci_str = f"CI=[{r_lo:.3f},{r_hi:.3f}]" if r_lo is not None and r_hi is not None else ""
-            self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s ± {t_std:.3f}s {t_ci_str} "
-                             f"| Ratio: {r_avg:.3f} ± {r_std:.3f} {r_ci_str}")
-        else:
-            self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s | Ratio: {r_avg:.5f}")
-
     def execute_runner(self, algo_name: str, dataset_path: str, dataset_short_name: str,
-                       params: dict[str, str]) -> list[dict] | None:
+                       params: dict[str, str]) -> tuple[float, float, list[float], list[float]] | None:
         """A helper method to standardize runner execution across subclasses."""
         runner = get_runner(algo_name, self.logger, str(self.session_dir))
         if not runner.binary_exists():
@@ -189,8 +200,6 @@ class Experiment(ABC):
             self.logger.warning(f"=> {algo_name} failed to run with params: {params}")
             return None
 
-        t_std, r_std, t_lo, t_hi, r_lo, r_hi = None, None, None, None, None, None
-
         if len(t_list) > 1 and len(r_list) > 1:
             t_std = np.std(t_list)
             r_std = np.std(r_list)
@@ -204,24 +213,7 @@ class Experiment(ABC):
         else:
             self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s | Ratio: {r_avg:.5f}")
 
-        run_data = []
-        for i, (t, r) in enumerate(zip(t_list, r_list)):
-            run_data.append({
-                "dataset": dataset_short_name,
-                "algorithm": algo_name,
-                "run": i + 1,
-                "time": t,
-                "ratio": r,
-                "time_std": t_std,
-                "ratio_std": r_std,
-                "time_ci_lo": t_lo,
-                "time_ci_hi": t_hi,
-                "ratio_ci_lo": r_lo,
-                "ratio_ci_hi": r_hi,
-                "parameters": json.dumps(params),
-            })
-
-        return run_data
+        return t_avg, r_avg, t_list, r_list
 
     def _write_manifest(self) -> None:
         """Write metadata.json to the session dir for reproducibility tracing."""
