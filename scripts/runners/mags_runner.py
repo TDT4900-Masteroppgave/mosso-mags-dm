@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Optional
 
 from scripts.runners.base_runner import AlgorithmRunner
-from scripts.utils import _run_build
 
 def _mags_build_env() -> dict:
     env = os.environ.copy()
@@ -50,11 +49,7 @@ add_executable({binary_file}
 target_include_directories({binary_file} PRIVATE src src/parallel_hashmap)
 target_link_libraries({binary_file} PRIVATE OpenMP::OpenMP_CXX)
 
-if(MSVC)
-    target_compile_options({binary_file} PRIVATE /W0 /openmp:llvm /O2)
-else()
-    target_compile_options({binary_file} PRIVATE -w -O3)
-endif()
+target_compile_options({binary_file} PRIVATE -w -O3)
 """
     (target_dir / "CMakeLists.txt").write_text(cmake_content, encoding="utf-8")
 
@@ -69,17 +64,6 @@ def _move_compiled_binary(build_dir: Path, binary_path: str) -> None:
     else:
         raise FileNotFoundError(f"Binary not found at {compiled_unix} or {compiled_win}")
 
-def build_mags(target_dir: Path, binary_path: str, algo_name: str, algo_config: dict) -> None:
-    """CMake build for MAGS: hotfix source, generate CMakeLists, compile, move binary."""
-    _apply_source_hotfixes(target_dir)
-    _generate_mags_cmake_lists(target_dir, algo_name, algo_config)
-    build_dir = target_dir / "build"
-    build_dir.mkdir(parents=True, exist_ok=True)
-    env = _mags_build_env()
-    _run_build(["cmake", "..", "-DCMAKE_BUILD_TYPE=Release"], cwd=build_dir, env=env)
-    _run_build(["cmake", "--build", ".", "--config", "Release"], cwd=build_dir, env=env)
-    _move_compiled_binary(build_dir, binary_path)
-
 class MagsRunner(AlgorithmRunner):
     _READ_REGEX = re.compile(r"read:\s*([\d.]+)\(s\)", re.IGNORECASE)
     _MERGE_REGEX = re.compile(r"merge:\s*([\d.]+)\(s\)", re.IGNORECASE)
@@ -90,10 +74,17 @@ class MagsRunner(AlgorithmRunner):
         binary_file = self.config.get("binary_file", self.algo_name)
         if platform.system() == "Windows" and not binary_file.endswith(".exe"):
             binary_file += ".exe"
-        return os.path.join(self.target_dir, binary_file)
+        return self.target_dir / binary_file
 
     def compile_logic(self) -> None:
-        build_mags(self.target_dir, self.get_binary_path(), self.algo_name, self.config)
+        _apply_source_hotfixes(self.target_dir)
+        _generate_mags_cmake_lists(self.target_dir, self.algo_name, self.config)
+        build_dir = self.target_dir / "build"
+        build_dir.mkdir(parents=True, exist_ok=True)
+        env = _mags_build_env()
+        self.run_build(["cmake", "..", "-DCMAKE_BUILD_TYPE=Release"], cwd=build_dir, env=env)
+        self.run_build(["cmake", "--build", ".", "--config", "Release"], cwd=build_dir, env=env)
+        _move_compiled_binary(build_dir, self.get_binary_path())
 
     def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
         read = self._READ_REGEX.search(stdout)

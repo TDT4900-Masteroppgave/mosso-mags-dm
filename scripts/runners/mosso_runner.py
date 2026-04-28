@@ -2,20 +2,9 @@ import os
 import re
 import shutil
 from typing import Optional
-from pathlib import Path
 
 from scripts.utils import get_fastutil_path
 from scripts.runners.base_runner import AlgorithmRunner
-from scripts.utils import _run_build
-
-def build_mosso(target_dir: Path, binary_path: str, fastutil_path: str, is_local: bool) -> None:
-    """Compile Mosso via bash compile.sh; rename output jar to binary_path."""
-    if not is_local:
-        shutil.copy(fastutil_path, os.path.join(target_dir, os.path.basename(fastutil_path)))
-    _run_build(["bash", "compile.sh"], cwd=target_dir)
-    compiled_jar = os.path.join(target_dir, "mosso-1.0.jar")
-    if os.path.exists(compiled_jar) and os.path.abspath(compiled_jar) != os.path.abspath(binary_path):
-        shutil.move(compiled_jar, binary_path)
 
 class MossoRunner(AlgorithmRunner):
     edge_format_string = "{u}\t{v}\t1\n"
@@ -29,10 +18,15 @@ class MossoRunner(AlgorithmRunner):
 
     def get_binary_path(self) -> str:
         binary_file = self.config.get("binary_file", f"mosso-{self.algo_name}.jar")
-        return os.path.join(self.target_dir, binary_file)
+        return self.target_dir / binary_file
 
     def compile_logic(self) -> None:
-        build_mosso(self.target_dir, self.get_binary_path(), self.fastutil_path, self.is_local)
+        if not self.is_local:
+            shutil.copy(self.fastutil_path, os.path.join(self.target_dir, os.path.basename(self.fastutil_path)))
+        self.run_build(["bash", "compile.sh"], cwd=self.target_dir)
+        compiled_jar = os.path.join(self.target_dir, "mosso-1.0.jar")
+        if os.path.exists(compiled_jar) and os.path.abspath(compiled_jar) != os.path.abspath(self.get_binary_path()):
+            shutil.move(compiled_jar, self.get_binary_path())
 
     def build_command(self, dataset_path: str, graph_output_path: str, parameters: list[str]) -> list[str]:
         classpath = f"{self.fastutil_path}{os.pathsep}{self.get_binary_path()}"

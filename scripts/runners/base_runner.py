@@ -38,6 +38,13 @@ class AlgorithmRunner(ABC):
     def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
         pass
 
+    def run_build(self, cmd: list[str], cwd=None, env=None):
+        self.logger.debug(f"[{self.algo_name}] Running build command: {' '.join(cmd)}")
+        return subprocess.run(
+            cmd, cwd=cwd, env=env, check=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+
     def _run_cmd(self, cmd: list[str], cwd=None, env=None):
         try:
             return subprocess.run(
@@ -61,9 +68,9 @@ class AlgorithmRunner(ABC):
                 )
                 retrieve_github_code(str(self.target_dir), self.algo_name, repo_url, branch, self.logger)
 
-            self.logger.debug(f"\t-> [{self.algo_name}] Compiling binaries...")
+            self.logger.debug(f"\t-> [{self.algo_name}] Compiling binaries")
             self.compile_logic()
-            self.logger.debug(f"\t-> [{self.algo_name}] [OK] Build successful.")
+            self.logger.debug(f"\t-> [{self.algo_name}] [OK] Build successful")
 
         except subprocess.CalledProcessError as e:
             self.logger.error(f"\t-> [{self.algo_name}] [!] Compilation failed. Code {e.returncode}")

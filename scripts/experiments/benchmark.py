@@ -1,15 +1,13 @@
 import json
 
-from scripts.config import DATASETS
 from scripts.experiments.base_experiment import Experiment
 
 
 class Benchmark(Experiment):
     def __init__(self):
-        super().__init__("compare")
+        super().__init__("benchmark")
 
     def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
-        total_edges = DATASETS.get(dataset_short_name, {}).get("meta", {}).get("edges", 1)
         metrics : list[dict] = []
         for algo_name, algo_config in self.active_algos.items():
             params = self._resolve_algo_params(algo_config)
@@ -28,7 +26,6 @@ class Benchmark(Experiment):
                     "run": i + 1,
                     "time": t,
                     "ratio": r,
-                    "time_per_edge": t / total_edges * 1_000_000,
                     "parameters": json.dumps(params),
                 })
 

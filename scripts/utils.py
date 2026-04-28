@@ -145,12 +145,6 @@ def format_long_dataframe_with_baseline(df: pd.DataFrame, baseline_algo: str | N
 
     return summary.apply(format_row, axis=1).sort_values(by=["Dataset", "Algorithm"])
 
-def _run_build(cmd: list[str], cwd=None, env=None):
-    return subprocess.run(
-        cmd, cwd=cwd, env=env, check=True,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-    )
-
 def get_confidence_interval(
         xs: List[float],
         stat=np.median,

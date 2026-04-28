@@ -132,8 +132,6 @@ class Experiment(ABC):
         for col in float_cols:
             raw_display_df[col] = raw_display_df[col].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
 
-        from scripts.utils import format_long_dataframe_with_baseline
-
         raw_table = Table(title="All Results", box=box.SIMPLE, show_header=True, header_style="bold cyan")
         for col in raw_display_df.columns:
             raw_table.add_column(str(col).capitalize())
@@ -144,23 +142,46 @@ class Experiment(ABC):
         self.console.print(raw_table)
         self.console.print()
 
-        summary_df = format_long_dataframe_with_baseline(raw_df, getattr(self.args, 'baseline', None))
+        baseline_algo = getattr(self.args, 'baseline', None)
 
-        summary_table = Table(title="Averages & Baseline Comparison", box=box.SIMPLE, show_header=True, header_style="bold magenta")
-        for col in summary_df.columns:
-            summary_table.add_column(str(col))
+        global_avg_df = raw_df.groupby('algorithm', as_index=False)[['time', 'ratio']].mean()
 
-        for _, row in summary_df.iterrows():
-            summary_table.add_row(*row.astype(str).tolist())
+        global_baselines = {}
+        if baseline_algo and baseline_algo in global_avg_df['algorithm'].values:
+            global_baselines = global_avg_df[global_avg_df['algorithm'] == baseline_algo].iloc[0].to_dict()
 
-        self.console.print(summary_table)
+        def format_global_row(data_entry):
+            t, r = data_entry.get('time', 0), data_entry.get('ratio', 0)
+            t_str, r_str = f"{t:.3f}s", f"{r:.5f}"
 
-        # Capture plain text (without color tags) for the log file
+            if global_baselines and data_entry['algorithm'] != baseline_algo:
+                if t > 0 and global_baselines.get('time', 0) > 0:
+                    t_str += f" [green]({global_baselines['time'] / t:.2f}x)[/green]"
+                if global_baselines.get('ratio', 0) > 0:
+                    r_str += f" [green]({r / global_baselines['ratio']:.2f}x)[/green]"
+
+            return pd.Series({
+                "Algorithm": data_entry['algorithm'],
+                "Avg Time": t_str,
+                "Avg Ratio": r_str
+            })
+
+        global_summary_df = global_avg_df.apply(format_global_row, axis=1).sort_values(by="Algorithm")
+
+        global_table = Table(title="Average Across All Datasets", box=box.SIMPLE, show_header=True, header_style="bold green")
+        for col in global_summary_df.columns:
+            global_table.add_column(str(col))
+
+        for _, row in global_summary_df.iterrows():
+            global_table.add_row(*row.astype(str).tolist())
+
+        self.console.print(global_table)
+
         text_console = Console(width=250, color_system=None)
         with text_console.capture() as capture:
             text_console.print(raw_table)
             text_console.print("\n")
-            text_console.print(summary_table)
+            text_console.print(global_table)
 
         for line in capture.get().splitlines():
             if line.strip():
@@ -291,15 +312,13 @@ class Experiment(ABC):
                 runner = get_runner(algo_name, self.logger, str(self.session_dir))
                 self.logger.debug(f"[bold blue]Building {algo_name} {config}[/bold blue]")
 
-                with self.console.status(f"[bold blue]Building {algo_name} "
-                                         f"{config.get('repo', '')} "
-                                         f"{config.get('branch', '')} "
-                                         f"{config.get('binary_file', '')}[/bold blue]"):
+                with self.console.status(f"[bold blue] Building {algo_name} "
+                                         f"| repo :{config.get('repo', '')} "
+                                         f"| branch: {config.get('branch', '')} [/bold blue]"):
                     runner.build()
                 self.console.print(f"[green]✓[/green] {algo_name} "
-                                   f"{config.get('repo', '')} "
-                                   f"{config.get('branch', '')} "
-                                   f"{config.get('binary_file', '')}")
+                                   f"| repo: {config.get('repo', '')} "
+                                   f"| branch: {config.get('branch', '')} ")
             except Exception as e:
                 self.console.print(f"[red]✗[/red] {algo_name} ({e})")
                 raise
