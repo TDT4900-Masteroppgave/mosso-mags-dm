@@ -13,8 +13,10 @@ PARAM_CONFIG = {
     "interval": {"description": "interval", "default": 10000},
     "b": {"description": "top candidates", "default": 5, "bounds": (1, 10)},
     "h": {"description": "hashes", "default": 4, "bounds": (4, 40)},
-    "thr": {"description": "threshold", "default": 0.0, "bounds": (0.0, 1.0)},
-    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (5, 240)}
+    "thr_start": {"description": "start threshold", "default": 1.0, "bounds": (0.0, 1.0)},
+    "thr_end": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0)},
+    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (5, 240)},
+    "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 50)},
 }
 
 ALGORITHMS = {
@@ -31,61 +33,54 @@ ALGORITHMS = {
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
     },
-    "strat_1": {
-        "repo": BASE_REPO_URL,
-        "branch": "feature/merging_strategy_1",
-        "type": "mosso",
-        "template": ["e", "c", "interval", "b"],
-        "binary_file": "mosso-strat_1.jar",
-    },
     "strat_2": {
         "repo": BASE_REPO_URL,
-        "branch": "feature/merging_strategy_2",
+        "branch": "mags_strat/similarity_measure",
         "type": "mosso",
         "template": ["e", "c", "interval", "h"],
-        "binary_file": "mosso-strat_2.jar",
+        "binary_file": "mosso.jar",
     },
     "strat_1_2": {
         "repo": BASE_REPO_URL,
-        "branch": "feature/merging_strategy_1_2",
+        "branch": "mags_strat/similarity_measure_top_b",
         "type": "mosso",
         "template": ["e", "c", "interval", "b", "h"],
-        "binary_file": "mosso-strat_1_2.jar",
+        "binary_file": "mosso.jar",
     },
     "strat_2_thr": {
         "repo": BASE_REPO_URL,
-        "branch": "feature/strat_2_threshold",
+        "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "template": ["e", "c", "interval", "h", "thr"],
-        "binary_file": "mosso-strat_2_thr.jar",
+        "template": ["e", "c", "interval", "h", "thr_end"],
+        "binary_file": "mosso.jar",
     },
-    "strat_2_cap": {
+    "cap": {
         "repo": BASE_REPO_URL,
-        "branch": "feature/merging_strategy_2_cap",
-        "type": "mosso",
-        "template": ["e", "c", "interval", "h", "cap"],
-        "binary_file": "mosso-strat_2_cap.jar",
-    },
-    "strat_2_2hop": {
-        "repo": BASE_REPO_URL,
-        "branch": "feature/merging_strategy_2_2hop",
-        "type": "mosso",
-        "template": ["e", "c", "interval"],
-        "binary_file": "mosso-strat_2_2hop.jar",
-    },
-    "strat_div": {
-        "repo": BASE_REPO_URL,
-        "branch": "feature/dividing-strategy",
+        "branch": "mags_strat/cap",
         "type": "mosso",
         "template": ["e", "c", "interval", "cap"],
-        "binary_file": "mosso-strat_div.jar",
+        "binary_file": "mosso-strat_2_cap.jar",
     },
-    "fix_testing_nodes": {
+    "ds": {
         "repo": BASE_REPO_URL,
-        "branch": "fix/testing_nodes",
+        "branch": "mags_strat/divide_strategy",
         "type": "mosso",
         "template": ["e", "c", "interval"],
-        "binary_file": "mosso-fix_testing_nodes.jar",
+        "binary_file": "mosso.jar",
+    },
+    "ds_thr": {
+        "repo": BASE_REPO_URL,
+        "branch": "mags_strat/divide_strategy_thr",
+        "type": "mosso",
+        "template": ["e", "c", "interval", "thr_start", "thr_end", "T"],
+        "binary_file": "mosso.jar",
+    },
+    "ds_sm_thr": {
+        "repo": BASE_REPO_URL,
+        "branch": "mags_strat/divide_strategy_similary_measure_thr",
+        "type": "mosso",
+        "template": ["e", "c", "interval", "h", "thr_start", "thr_end", "T"],
+        "binary_file": "mosso.jar",
     },
     "mags": {
         "repo": "https://github.com/nedchu/mags-release",
