@@ -18,7 +18,7 @@ BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
 ALGORITHMS = {
     "local": {
-        "template": ["escape", "samples", "interval", "thr"]
+        "template": ["escape", "samples", "interval", "thr_end"]
     },
     "kdd20-mosso": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
@@ -39,7 +39,7 @@ ALGORITHMS = {
     "similarity_measure_thr": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
-        "template": ["escape", "samples", "interval", "thr"]
+        "template": ["escape", "samples", "interval", "thr_end"]
     },
     "strat_1_2": {
         "repo": BASE_REPO_URL,
