@@ -50,6 +50,12 @@ ALGORITHMS = {
         "branch": "mags_strat/dividing_strategy_thr",
         "params" : {"thr_start": 1},
         "template": ["escape", "samples", "interval", "thr_start", "thr_end", "iter"]
+    },
+    "dividing_strategy_similarity_measure_thr": {
+        "repo": BASE_REPO_URL,
+        "branch": "mags_strat/dividing_strategy_similarity_measure_thr",
+        "params" : {"thr_start": 1},
+        "template": ["escape", "samples", "interval", "thr_start", "thr_end", "iter"]
     }
 }
 
