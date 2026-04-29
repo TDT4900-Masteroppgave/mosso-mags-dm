@@ -36,9 +36,9 @@ ALGORITHMS = {
         "branch": "feature/merging_strategy_2",
         "template": ["escape", "samples", "interval"]
     },
-    "strat_2_thr": {
+    "similarity_measure_thr": {
         "repo": BASE_REPO_URL,
-        "branch": "feature/strat_2_threshold",
+        "branch": "mags_strat/similarity_measure_thr",
         "template": ["escape", "samples", "interval", "thr"]
     },
     "strat_1_2": {
