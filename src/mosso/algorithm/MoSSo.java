@@ -20,8 +20,11 @@ public class MoSSo extends SupernodeHelper {
     private long costCounter = 0;
     private int ecnt = 0;
     private int interval;
+    private int num_iterations;
+    private double threshold_start;
+    private double threshold_end;
 
-    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval){
+    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval, final double _threshold_start, final double _threshold_end, final int _num_iterations){
         super(directed);
         if(directed){
             try {
@@ -35,6 +38,9 @@ public class MoSSo extends SupernodeHelper {
         n_hash = 4;
         sampleNumber = _sample;
         interval = _interval;
+        threshold_start = _threshold_start;
+        threshold_end = _threshold_end;
+        num_iterations = _num_iterations;
         start = System.currentTimeMillis();
         hash_initialization();
     }
@@ -325,9 +331,58 @@ public class MoSSo extends SupernodeHelper {
         }
     }
 
+    /**
+     * MAGS-DM: Calculate estimated Jaccard similarity between two nodes
+     * by comparing their multiple MinHash signatures.
+     */
+    private double calculateMH(int u, int v, double currentBestSim) {
+        int matches = 0;
+        for (int i = 0; i < n_hash; i++) {
+            if (minHash[i].getInt(u) == minHash[i].getInt(v)) {
+                matches++;
+            }
+
+            // OPTIMIZATION: Short-circuit
+            // If the remaining hashes can't possibly result in a better score, stop.
+            int remaining = n_hash - (i + 1);
+            if (((double) matches + remaining) / n_hash < currentBestSim) {
+                return -1.0; // Fail early
+            }
+        }
+        return (double) matches / n_hash;
+    }
+    
+    private final double SIM_START = threshold_start;     // initial MinHash/Jaccard threshold
+    private final double SIM_END   = threshold_end;    // final threshold (or use 1.0 / n_hash)
+            
+    /**
+     * Geometric, monotonically decreasing threshold across iterations, MAGS-style,
+     * but in the SIMILARITY domain (MinHash/Jaccard).
+     * t in [1..T]
+     */
+    private double similarityThreshold(int t, int T) {
+        if (T <= 1) return SIM_END;
+        double ratio = Math.pow(SIM_END / SIM_START, 1.0 / (T - 1));
+        return SIM_START * Math.pow(ratio, t - 1);
+    }
+    
+    private double snapToMinHashBin(double th) {
+        final double step = 1.0 / n_hash;
+        // keep the schedule slightly conservative (≥ th) so we don't merge too soon
+        double snapped = Math.ceil(th / step) * step;
+        // clamp to [0,1]
+        if (snapped > 1.0) snapped = 1.0;
+        if (snapped < 0.0) snapped = 0.0;
+        return snapped;
+    }
+
     private void _divide_and_merge(final int dst, IntArrayList srcnbd, final int which) {
          // divide node into paritions using min hash e.g. coarse clustering
         Long2ObjectOpenHashMap<IntArrayList> srcGrp = new Long2ObjectOpenHashMap<>();
+        
+        // Nodes that have already passed similarity >= thr at least once in this call
+        final IntSet passedThr = new IntOpenHashSet();
+
     
         if(getDegree(dst) > 0) srcnbd.set(0, dst);
         
@@ -337,34 +392,53 @@ public class MoSSo extends SupernodeHelper {
             if (!srcGrp.containsKey(target)) srcGrp.put(target, new IntArrayList());
             srcGrp.get(target).add(v);
         }
-            
-        // for each partition
-        for (IntArrayList partition : srcGrp.values()) {
-            // while partiotion is not empty (contains nodes to merge)
-            IntIterator it = partition.iterator();
-            while (it.hasNext()) {
-                // picks (and remove) a random node from the partition
-                // int rand_index = randInt(0, partition.size()-1);
-                // int testing_node = partition.getInt(rand_index);
-                // partition.removeInt(rand_index);
+        
+        for (int current_iter = 1; current_iter <= num_iterations; current_iter++) {
 
-                // the coarse clusters are formed from the testing pool which is sampled at random
-                // hence, the order in the cluster should already be random and therefore we can use an iterator
-                // we also want to use an iterator to only pick a node in the parition as testing node once, while
-                // keeping the node available as candidate node for others 
-                int testing_node = it.nextInt();
+            final double rawThr = similarityThreshold(current_iter, num_iterations);
+            final double thr = snapToMinHashBin(rawThr);
 
-                if (randInt(1, getDegree(testing_node)) <= 1) {
+            // for each partition
+            for (IntArrayList partition : srcGrp.values()) {
+                // while partiotion is not empty (contains nodes to merge)
+                IntIterator it = partition.iterator();
+                while (it.hasNext()) {
+                    // picks (and remove) a random node from the partition
+                    // int rand_index = randInt(0, partition.size()-1);
+                    // int testing_node = partition.getInt(rand_index);
+                    // partition.removeInt(rand_index);
+    
+                    // the coarse clusters are formed from the testing pool which is sampled at random
+                    // hence, the order in the cluster should already be random and therefore we can use an iterator
+                    // we also want to use an iterator to only pick a node in the parition as testing node once, while
+                    // keeping the node available as candidate node for others 
+                    int testing_node = it.nextInt();
 
-                    // choose random node in the cluster containing nbd
-                    int target = partition.getInt(randInt(0, partition.size() - 1));
+                    
+                    // If it has passed the threshold before, never test it again
+                    if (passedThr.contains(testing_node)) {
+                        continue;
+                    }
+    
+                    if (randInt(1, getDegree(testing_node)) <= 1) {
+    
+                        // choose random node in the cluster containing nbd
+                        int target = partition.getInt(randInt(0, partition.size() - 1));
+                        double similarity = calculateMH(testing_node, target, -1); // no current best similarity, hence -1
+                        
+                        if (similarity >= thr) {
+                            
+                            // Mark the node as tested -> it passed the thr test, so it should never be tested again
+                            passedThr.add(testing_node);
 
-                    // Proceed with MoSSo's original update logic using the newly found best target
-                    if (randInt(1, 10) > escape || iteration < 1000) {
-                        tryNodalUpdate(testing_node, V.getInt(target));
-                    } else {
-                        // only if the supernode containing nbd is not singleton
-                        if(getSize(V.getInt(testing_node)) > 1) tryNodalUpdate(testing_node, newSupernode());
+                            // Proceed with MoSSo's original update logic using the newly found best target
+                            if (randInt(1, 10) > escape || iteration < 1000) {
+                                tryNodalUpdate(testing_node, V.getInt(target));
+                            } else {
+                                // only if the supernode containing nbd is not singleton
+                                if(getSize(V.getInt(testing_node)) > 1) tryNodalUpdate(testing_node, newSupernode());
+                            }
+                        }
                     }
                 }
             }
