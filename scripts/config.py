@@ -35,9 +35,9 @@ ALGORITHMS = {
         "branch": "feature/merging_strategy_2",
         "template": ["escape", "samples", "interval"]
     },
-    "strat_2_cap": {
+    "dividing_strategy_cap": {
         "repo": BASE_REPO_URL,
-        "branch": "feature/merging_strategy_2_cap",
+        "branch": "mags_strat/dividing_strategy_cap",
         "template": ["escape", "samples", "interval", "cap"]
     },
     "strat_1_2": {

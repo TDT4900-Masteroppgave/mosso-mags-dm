@@ -329,28 +329,6 @@ public class MoSSo extends SupernodeHelper {
         }
     }
 
-
-    /**
-     * MAGS-DM: Calculate estimated Jaccard similarity between two nodes
-     * by comparing their multiple MinHash signatures.
-     */
-    private double calculateMH(int u, int v, double currentBestSim) {
-        int matches = 0;
-        for (int i = 0; i < n_hash; i++) {
-            if (minHash[i].getInt(u) == minHash[i].getInt(v)) {
-                matches++;
-            }
-
-            // OPTIMIZATION: Short-circuit
-            // If the remaining hashes can't possibly result in a better score, stop.
-            int remaining = n_hash - (i + 1);
-            if (((double) matches + remaining) / n_hash < currentBestSim) {
-                return -1.0; // Fail early
-            }
-        }
-        return (double) matches / n_hash;
-    }
-
     // Helper to combine two ints into a long key (deterministic)
     private long _mixToLong(int a, int b) {
         return (((long) a) << 32) ^ (b & 0xffffffffL);
@@ -382,19 +360,18 @@ public class MoSSo extends SupernodeHelper {
     }
 
     private void _processEdge(final int dst, IntArrayList srcnbd, final int which) {
-        // divide noed into paritions using min hash e.g. coarse clustering
+        // divide node into partitions using min hash e.g. coarse clustering
         Long2ObjectOpenHashMap<IntArrayList> srcGrp = new Long2ObjectOpenHashMap<>();
         // Map: node id -> final bucket key used during coarse clustering
         Int2LongOpenHashMap nodeToBucketKey = new Int2LongOpenHashMap();
         if(getDegree(dst) > 0) srcnbd.set(0, dst);
-        // coarse clustering using minhash
-
-        // Build random order once, outside the v-loop
+        
+        // Build random minhash order for every node in the testing pool
         int[] minhash_index_order = _getMinHashOrder(which);
-
-         // --- Coarse clustering using minhash with a bucket size cap ---
+        
+        // coarse clustering using minhash
         for (int v : srcnbd) {
-            // Base: use the given randomly chosen 'which'¨
+            // Base: use the given randomly chosen 'which'
             int level = 0;
             int baseHash = minHash[which].getInt(v);
             long key = baseHash;
@@ -406,11 +383,11 @@ public class MoSSo extends SupernodeHelper {
                     srcGrp.put(key, part);
                 }
         
-                // If no more minhash indices remain to refine with -> collector
+                // If no more minhash indices remain to refine with -> collector bucket
                 boolean atLastLevel = (level >= minHash.length - 1);
 
                 if (atLastLevel) {
-                    // Collector bucket: absorb regardless of CAP
+                    // collector bucket: absorb regardless of CAP
                     part.add(v);
                     nodeToBucketKey.put(v, key);
                     break;
@@ -440,28 +417,12 @@ public class MoSSo extends SupernodeHelper {
 
                 if (candidatePool == null || candidatePool.isEmpty()) continue;
 
-                // MAGS-DM: Similarity Measure
-                int bestTarget = -1;
-                double maxSimilarity = -1.0;
-
-                for (int candidate: candidatePool) {
-                    if (candidate == nbd) continue;
-
-                    double similarity = calculateMH(nbd, candidate, maxSimilarity);
-
-                    if (similarity > maxSimilarity) {
-                        maxSimilarity = similarity;
-                        bestTarget = candidate;
-                    }
-                }
-
-                if (bestTarget == -1) {
-                    bestTarget = nbd;
-                }
+                 // choose random node in the cluster containing nbd
+                int target = candidatePool.getInt(randInt(0, candidatePool.size() - 1));
 
                 // Proceed with MoSSo's original update logic using the newly found best target
-                if (randInt(1, 10) > escape || iteration < 1000 && maxSimilarity > -1) {
-                    tryNodalUpdate(nbd, V.getInt(bestTarget));
+                if (randInt(1, 10) > escape || iteration < 1000) {
+                    tryNodalUpdate(nbd, V.getInt(target));
                 } else {
                     // only if the supernode containing nbd is not singleton
                     if(getSize(V.getInt(nbd)) > 1) tryNodalUpdate(nbd, newSupernode());
