@@ -205,9 +205,10 @@ def parse_and_filter_args(script_type="benchmark"):
     parser.add_argument("--keep-summaries", action="store_true")
     parser.add_argument("--baseline", type=str, help="Algorithm to use as baseline for relative comparisons")
     parser.add_argument("--cap", type=int, help="Cap for coarse cluster")
+    parser.add_argument("--h", type=int, help="Number of hash functions")
     parser.add_argument("--thr_start", type=float, help="Start threshold")
     parser.add_argument("--thr_end", type=float, help="End threshold")
-    parser.add_argument("--iter", type=int, help="Number of iterations")
+    parser.add_argument("--T", type=int, help="Number of iterations")
 
     if script_type == "sweep":
         parser.add_argument("--param", choices=list(SWEEP_CONFIG.keys()), required=True)
