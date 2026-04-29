@@ -12,7 +12,7 @@ _TYPES = {
     "sweep":     "scripts.experiments.sweep",
     "cot":       "scripts.experiments.compression_over_time",
     "ivb":       "scripts.experiments.incremental_vs_batch",
-    "bayesian":  "scripts.experiments.bayesian_opt",
+    "bo":  "scripts.experiments.bayesian_opt",
     "analyze":   "scripts.analysis.analyze",
 }
 

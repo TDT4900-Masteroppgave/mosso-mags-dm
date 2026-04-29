@@ -1,101 +1,161 @@
-import os
-import pandas as pd
+import json
 import optuna
-import warnings
+import pandas as pd
+import numpy as np
+from rich.table import Table
+from rich.panel import Panel
+from rich import box
 
+from scripts import db
 from scripts.config import PARAM_CONFIG
 from scripts.experiments.base_experiment import Experiment
-import scripts.db as db
-
-optuna.logging.set_verbosity(optuna.logging.WARNING)
-warnings.filterwarnings("ignore", category=FutureWarning)
 
 
-class BayesianOptimization(Experiment):
+class BayesianOpt(Experiment):
     def __init__(self):
-        super().__init__("bayesian")
+        super().__init__("bo")
 
     def add_custom_args(self, parser):
-        parser.add_argument("--iterations", type=int, default=30, help="Total number of points to sample")
-        parser.add_argument("--n-startup", type=int, default=10, help="Initial random explorations before AI kicks in")
-        parser.add_argument("--jobs", type=int, default=1, help="Number of parallel threads to run (-1 uses all CPUs)")
+        parser.add_argument("--trials", type=int, default=30, help="Number of Optuna trials per algorithm.")
+        parser.add_argument("--jobs", type=int, default=1, help="Number of parallel jobs. Set to -1 to use all cores.")
 
-    def process(self, dataset_path: str, dataset_short_name: str):
+    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+        metrics: list[dict] = []
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
         for algo_name, algo_config in self.active_algos.items():
-            template = algo_config.get('template', [])
-            if not template:
-                self.logger.info(f"\n[*] Skipping [{algo_name}]: No hyperparameters to optimize.")
-                continue
+            self.logger.debug(f"Starting Bayesian Optimization: {algo_name} on {dataset_short_name}")
+            self.console.print(f"[bold cyan]Starting Bayesian Optimization: {algo_name} on {dataset_short_name}[/]")
 
-            def objective(objective_trial):
-                resolved_params = {}
-                for p_key in template:
-                    bounds = PARAM_CONFIG.get(p_key, {}).get("bounds")
-                    if bounds:
-                        resolved_params[p_key] = objective_trial.suggest_int(p_key, bounds[0], bounds[1])
-                    else:
-                        resolved_params[p_key] = PARAM_CONFIG.get(p_key, {}).get("default")
+            def objective(trial):
+                params = self._resolve_algo_params(algo_config)
 
-                # Fill remaining params with defaults
-                full_params = self._resolve_algo_params(algo_config, resolved_params)
+                for param_name, conf in PARAM_CONFIG.items():
+                    if param_name in params:
+                        val_type = conf["type"]
+                        bounds = conf.get("bounds")
+                        if bounds:
+                            if val_type == int:
+                                params[param_name] = str(trial.suggest_int(param_name, bounds[0], bounds[1]))
+                            elif val_type == float:
+                                params[param_name] = str(trial.suggest_float(param_name, bounds[0], bounds[1]))
 
-                avg_time, avg_ratio, _, _, = self.execute_runner(
-                    algo_name, algo_config, dataset_path, dataset_short_name, full_params
+                t_avg, r_avg, t_list, r_list = self.execute_runner(
+                    algo_name=algo_name,
+                    dataset_path=dataset_path,
+                    params=params,
+                    dataset_short_name=dataset_short_name,
                 )
 
-                if avg_time is None or avg_ratio is None:
+                if t_list is None:
                     raise optuna.exceptions.TrialPruned()
 
-                result_entry = {
-                    'Dataset': dataset_short_name,
-                    'Algorithm': algo_name,
-                    'Time': avg_time,
-                    'Ratio': avg_ratio
-                }
-                result_entry.update(resolved_params)
-                self.results.append(result_entry)
+                for i, (t, r) in enumerate(zip(t_list, r_list)):
+                    metrics.append({
+                        "dataset": dataset_short_name,
+                        "algorithm": algo_name,
+                        "run": i + 1,
+                        "time": t,
+                        "ratio": r,
+                        "trial": trial.number + 1,
+                        **params,
+                    })
+                return t_avg, r_avg
 
-                return avg_time, avg_ratio
-
-            # Scope the DB to this session to avoid accumulating stale trials across runs
-            db_path = os.path.join(self.session_dir, "optuna_study.db")
-            study_name = f"{algo_name}_{dataset_short_name}"
-            sampler = optuna.samplers.TPESampler(
-                n_startup_trials=self.args.n_startup,
-                seed=self.args.seed,
+            study = optuna.create_study(directions=["minimize", "minimize"])
+            study.optimize(
+                objective,
+                n_trials=self.args.trials,
+                n_jobs=self.args.jobs,
+                show_progress_bar=True
             )
 
-            study = optuna.create_study(
-                study_name=study_name,
-                storage=f"sqlite:///{db_path}",
-                directions=["minimize", "minimize"],
-                sampler=sampler,
-                load_if_exists=False,  # fresh study per session for reproducibility
-            )
-
-            self.logger.info(f"\n[*] Starting Optuna Search for [{algo_name}] on [{dataset_short_name}] ({self.args.iterations} trials)")
-            study.optimize(objective, n_trials=self.args.iterations, n_jobs=self.args.jobs, show_progress_bar=True)
-
-            self.logger.info(f"\n[*] Optuna search complete. Found {len(study.best_trials)} optimal trade-off configurations.")
-            for i, trial in enumerate(study.best_trials):
-                self.logger.info(f"    -> [Frontier {i}] Time: {trial.values[0]:.2f}s, Ratio: {trial.values[1]:.4f}, Params: {trial.params}")
+        return metrics
 
     def output(self):
-        raw_df = pd.DataFrame(self.results)
+        if not self.db_conn: return
+        raw_df = db.read_results(self.db_conn)
+        if raw_df.empty: return
 
-        if self.db_conn:
-            param_cols = [c for c in raw_df.columns
-                          if c not in {"Dataset", "Algorithm", "Time", "Ratio"}]
-            for trial_i, (_, row) in enumerate(raw_df.iterrows(), 1):
-                params = {c: row[c] for c in param_cols if not pd.isna(row.get(c))}
-                db.write_result(
-                    self.db_conn,
-                    algorithm=row["Algorithm"], dataset=row["Dataset"],
-                    time=row.get("Time"), ratio=row.get("Ratio"),
-                    trial=trial_i,
-                    params=params,
-                )
+        # 1. Normalize column names to lowercase to match PARAM_CONFIG keys
+        raw_df.columns = [c.lower() for c in raw_df.columns]
 
+        # 2. Identify which parameters from our config actually exist in the DB
+        tunable_params = [p for p in PARAM_CONFIG.keys() if p in raw_df.columns]
+
+        if not tunable_params:
+            self.console.print("[bold red]Error:[/] No parameter columns found. Check the saving process.")
+            return
+
+        full_df = raw_df.copy()
+
+        # 3. Ensure parameters are numeric for correlation calculations
+        for p in tunable_params:
+            full_df[p] = pd.to_numeric(full_df[p], errors='coerce')
+
+        for ds in full_df['dataset'].unique():
+            for algo in full_df['algorithm'].unique():
+                df_sub = full_df[(full_df['algorithm'] == algo) & (full_df['dataset'] == ds)].copy()
+                if df_sub.empty or 'trial' not in df_sub.columns: continue
+
+                agg_df = df_sub.groupby('trial', as_index=False).mean(numeric_only=True)
+                if len(agg_df) < 1: continue
+
+                # --- Knee Point Logic ---
+                t_min, t_max = agg_df['time'].min(), agg_df['time'].max()
+                r_min, r_max = agg_df['ratio'].min(), agg_df['ratio'].max()
+                t_range, r_range = (t_max - t_min), (r_max - r_min)
+
+                agg_df['t_norm'] = (agg_df['time'] - t_min) / (t_range if t_range > 0 else 1.0)
+                agg_df['r_norm'] = (agg_df['ratio'] - r_min) / (r_range if r_range > 0 else 1.0)
+                agg_df['dist'] = np.sqrt(agg_df['t_norm']**2 + agg_df['r_norm']**2)
+                knee = agg_df.loc[agg_df['dist'].idxmin()]
+
+                # 4. Extract optimal parameters from individual columns
+                best_trial_data = df_sub[df_sub['trial'] == knee['trial']].iloc[0]
+
+                # FIX: Convert the slice to a dictionary to ensure native Python types for JSON
+                best_p_dict = best_trial_data[tunable_params].to_dict()
+
+                best_p_str = json.dumps(best_p_dict) # This will now work without the int64 error
+
+                self.console.print(f"\n[bold magenta]Optimization Results:[/] {algo} on {ds}")
+                self.console.print(Panel(
+                    f"[bold green]Best Trade-off (Trial {int(knee['trial'])})[/]\n"
+                    f"Time: {knee['time']:.3f}s | Ratio: {knee['ratio']:.5f}\n"
+                    f"Params: {best_p_str}",
+                    border_style="green"
+                ))
+
+                # 2. Print Parameter Impact Table (Pearson Correlation)
+                tunable_params = [p for p in PARAM_CONFIG.keys() if p in df_sub.columns]
+                if tunable_params:
+                    corr_table = Table(
+                        title="Parameter Impact Profile (Correlation)",
+                        box=box.SIMPLE,
+                        header_style="bold yellow",
+                        caption="[dim]Green means an increase in the parameter improves the metric (lowers time/ratio).\nRed means an increase worsens the metric.[/dim]"
+                    )
+                    corr_table.add_column("Parameter", style="cyan")
+                    corr_table.add_column("Impact on Time", justify="right")
+                    corr_table.add_column("Impact on Ratio", justify="right")
+
+                    for p in tunable_params:
+                        if df_sub[p].nunique() > 1: # Only measure params that actually varied
+                            t_corr = df_sub[p].corr(df_sub['time'])
+                            r_corr = df_sub[p].corr(df_sub['ratio'])
+
+                            # Format nicely: Positive correlation to a "lower is better" metric is BAD (Red)
+                            t_fmt = f"[red]{t_corr:+.2f}[/]" if t_corr > 0 else f"[green]{t_corr:+.2f}[/]"
+                            r_fmt = f"[red]{r_corr:+.2f}[/]" if r_corr > 0 else f"[green]{r_corr:+.2f}[/]"
+
+                            corr_table.add_row(p, t_fmt, r_fmt)
+
+                    self.console.print(corr_table)
+
+
+def main():
+    BayesianOpt().run()
 
 if __name__ == "__main__":
-    BayesianOptimization().run()
+    main()

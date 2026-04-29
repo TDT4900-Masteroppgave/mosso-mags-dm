@@ -1,7 +1,12 @@
 import json
 
-from scripts.config import DATASETS
+from scripts.config import DATASETS, ALGORITHMS
 from scripts.experiments.base_experiment import Experiment
+
+import pandas as pd
+from rich.table import Table
+from rich import box
+from scripts import db
 
 
 class IncrementalVsBatch(Experiment):
@@ -28,18 +33,22 @@ class IncrementalVsBatch(Experiment):
                 continue
 
             for i, (t, r) in enumerate(zip(t_list, r_list)):
+                is_incremental = ALGORITHMS.get(algo_name, {}).get("type", "") == "mosso"
+
                 t_micros = t * 1_000_000
+
+                final_t_micros = (t_micros / total_edges) if is_incremental else t_micros
 
                 metrics.append({
                     "dataset": dataset_short_name,
                     "algorithm": algo_name,
                     "run": i + 1,
                     # Plot this column for Batch Algorithms
-                    "time_micros": t_micros,
+                    "time": t,
                     # Plot this column for Streaming Algorithms
-                    "time_per_change": t_micros / total_edges,
+                    "time_micros": final_t_micros,
                     "ratio": r,
-                    "parameters": json.dumps(params),
+                    **params,
                 })
 
         return metrics
@@ -48,32 +57,26 @@ class IncrementalVsBatch(Experiment):
         if not self.db_conn:
             return
 
-        import pandas as pd
-        from rich.table import Table
-        from rich import box
-        from scripts import db
-
         raw_df = db.read_results(self.db_conn)
         if raw_df.empty:
             return
 
-        summary_df = raw_df.groupby(['dataset', 'algorithm'], as_index=False)[['time_micros', 'time_per_change']].mean()
+        # Use the new pre-calculated column
+        summary_df = raw_df.groupby(['dataset', 'algorithm'], as_index=False)[['time_micros']].mean()
 
         table = Table(title="Incremental vs Batch Execution Time", box=box.SIMPLE, show_header=True, header_style="bold yellow")
         table.add_column("Dataset", style="cyan")
         table.add_column("Algorithm", style="green")
-        table.add_column("Total Time (Batch)", justify="right")
-        table.add_column("Time Per Change (Streaming)", justify="right")
+        table.add_column("Type", justify="center")
+        table.add_column("Execution Time (µs)", justify="right")
 
         for _, row in summary_df.sort_values(by=["dataset", "algorithm"]).iterrows():
-            t_batch = f"{row['time_micros']:,.0f} µs" if pd.notna(row['time_micros']) else "N/A"
-            t_stream = f"{row['time_per_change']:,.2f} µs" if pd.notna(row['time_per_change']) else "N/A"
+            t_val = f"{row['time_micros']:,.2f} µs" if pd.notna(row['time_micros']) else "N/A"
 
             table.add_row(
                 str(row['dataset']),
                 str(row['algorithm']),
-                t_batch,
-                t_stream
+                t_val
             )
 
         self.console.print(table)

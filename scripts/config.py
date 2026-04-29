@@ -8,15 +8,15 @@ ALGORITHMS_DIR = OUTPUT_DIR / "algorithms"
 BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
 PARAM_CONFIG = {
-    "c": {"description": "sample number", "default": 120, "bounds": (10, 240)},
-    "e": {"description": "escape", "default": 3, "bounds": (1, 5)},
-    "interval": {"description": "interval", "default": 10000},
-    "b": {"description": "top candidates", "default": 5, "bounds": (1, 10)},
-    "h": {"description": "hashes", "default": 4, "bounds": (4, 40)},
-    "thr_start": {"description": "start threshold", "default": 1.0, "bounds": (0.0, 1.0)},
-    "thr_end": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0)},
-    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (5, 240)},
-    "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 50)},
+    "c": {"description": "sample number", "default": 120, "bounds": (10, 240), "type": int},
+    "e": {"description": "escape", "default": 3, "bounds": (1, 5), "type": int},
+    "interval": {"description": "interval", "default": 10000, "type": int},
+    "b": {"description": "top candidates", "default": 5, "bounds": (1, 10), "type": int},
+    "h": {"description": "hashes", "default": 4, "bounds": (4, 40), "type": int},
+    "thr_start": {"description": "start threshold", "default": 1.0, "bounds": (0.0, 1.0), "type": float},
+    "thr_end": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "type": float},
+    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (5, 240), "type": int},
+    "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 50), "type": int},
 }
 
 ALGORITHMS = {
