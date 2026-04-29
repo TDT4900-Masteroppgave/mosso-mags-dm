@@ -26,11 +26,12 @@ public class Run {
             final int probability = Integer.parseInt(args[3]);
             final int n_samples = Integer.parseInt(args[4]);
             final int interval = Integer.parseInt(args[5]);
-            final double threshold_start = Double.parseDouble(args[6]);
-            final double threshold_end = Double.parseDouble(args[7]);
-            final int num_iterations = Integer.parseInt(args[8]);
-            System.out.println("escape probability : " + probability + ", n_samples : " + n_samples + ", TT : " + interval + ", threshold_start : " + threshold_start + ", threshold_end : " + threshold_end + ", num_iterations : " + num_iterations);
-            module = new MoSSo(false, probability, n_samples, interval, threshold_start, threshold_end, num_iterations);
+            final int h = Integer.parseInt(args[6]);
+            final double threshold_start = Double.parseDouble(args[7]);
+            final double threshold_end = Double.parseDouble(args[8]);
+            final int num_iterations = Integer.parseInt(args[9]);
+            System.out.println("escape probability : " + probability + ", n_samples : " + n_samples + ", TT : " + interval + ", h : " + h + ", threshold_start : " + threshold_start + ", threshold_end : " + threshold_end + ", num_iterations : " + num_iterations);
+            module = new MoSSo(false, probability, n_samples, interval, h, threshold_start, threshold_end, num_iterations);
         } else if (sumMode.compareTo("simple") == 0) {
             final int probability = Integer.parseInt(args[3]);
             final int n_samples = Integer.parseInt(args[4]);

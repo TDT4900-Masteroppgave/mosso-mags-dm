@@ -24,7 +24,7 @@ public class MoSSo extends SupernodeHelper {
     private double threshold_start;
     private double threshold_end;
 
-    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval, final double _threshold_start, final double _threshold_end, final int _num_iterations){
+    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval, final int h, final double _threshold_start, final double _threshold_end, final int _num_iterations){
         super(directed);
         if(directed){
             try {
@@ -35,7 +35,7 @@ public class MoSSo extends SupernodeHelper {
             }
         }
         escape = _escape;
-        n_hash = 4;
+        n_hash = h;
         sampleNumber = _sample;
         interval = _interval;
         threshold_start = _threshold_start;
