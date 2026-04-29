@@ -114,6 +114,10 @@ class Experiment(ABC):
             raw_df.columns = raw_df.columns.str.lower()
             db.write_results_bulk(self.db_conn, raw_df)
 
+        self.print_result()
+        self.output()
+
+    def print_result(self):
         self.console.rule("[bold]Results[/bold]")
         if not self.db_conn:
             self.logger.warning("No database connection. Skipping table generation.")
@@ -139,10 +143,9 @@ class Experiment(ABC):
         self.console.print(raw_table)
         self.console.print()
 
-        self.print_table()
-
-    def print_table(self):
-        return
+    @abstractmethod
+    def output(self):
+        pass
 
     def _resolve_algo_params(self, algo_config: dict) -> dict[str, str]:
         cmd: dict[str, str] = {}
@@ -239,6 +242,24 @@ class Experiment(ABC):
         db.write_metadata(self.db_conn, manifest)
         self.logger.debug("Metadata successfully written to db")
 
+    def _build_algorithms(self) -> None:
+        self.console.rule("[bold]Building[/bold]")
+        for algo_name, config in self.active_algos.items():
+            try:
+                runner = get_runner(algo_name, self.logger, str(self.session_dir))
+                self.logger.debug(f"[bold blue]Building {algo_name} {config}[/bold blue]")
+
+                with self.console.status(f"[bold blue] Building {algo_name} "
+                                         f"| repo :{config.get('repo', '')} "
+                                         f"| branch: {config.get('branch', '')} [/bold blue]"):
+                    runner.build()
+                self.console.print(f"[green]✓[/green] {algo_name} "
+                                   f"| repo: {config.get('repo', '')} "
+                                   f"| branch: {config.get('branch', '')} ")
+            except Exception as e:
+                self.console.print(f"[red]✗[/red] {algo_name} ({e})")
+                raise
+
     def _parse_arguments(self) -> argparse.Namespace:
         """Builds the parser, collects custom args, and parses them."""
         parser = argparse.ArgumentParser()
@@ -248,9 +269,7 @@ class Experiment(ABC):
         data_group.add_argument("--group", choices=["all"] + list(DATASET_GROUP.keys()), default="all")
         data_group.add_argument("--dataset", nargs='+', choices=list(DATASETS.keys()), type=str,
                                 help="Specific dataset(s) to run by short_name (e.g., YT) or filename. Overrides --group.")
-
         parser.add_argument("--algorithm", nargs='+', help="Specific algorithms to run")
-        parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
         parser.add_argument("--is-local", action="store_true",
                             help="Include the local directory code in the benchmark")
         parser.add_argument("--seed", type=int, default=42,
@@ -275,29 +294,7 @@ class Experiment(ABC):
         if args.is_local:
             self.active_algos["local"] = ALGORITHMS["local"]
 
-        if args.baseline and args.baseline not in args.algorithm:
-            print(f"[!] The specified baseline '{args.baseline}' is not in the active algorithms list.")
-            exit(1)
-
         return args
-
-    def _build_algorithms(self) -> None:
-        self.console.rule("[bold]Building[/bold]")
-        for algo_name, config in self.active_algos.items():
-            try:
-                runner = get_runner(algo_name, self.logger, str(self.session_dir))
-                self.logger.debug(f"[bold blue]Building {algo_name} {config}[/bold blue]")
-
-                with self.console.status(f"[bold blue] Building {algo_name} "
-                                         f"| repo :{config.get('repo', '')} "
-                                         f"| branch: {config.get('branch', '')} [/bold blue]"):
-                    runner.build()
-                self.console.print(f"[green]✓[/green] {algo_name} "
-                                   f"| repo: {config.get('repo', '')} "
-                                   f"| branch: {config.get('branch', '')} ")
-            except Exception as e:
-                self.console.print(f"[red]✗[/red] {algo_name} ({e})")
-                raise
 
     def print_parameters(self) -> None:
         # General parameters

@@ -44,6 +44,39 @@ class IncrementalVsBatch(Experiment):
 
         return metrics
 
+    def output(self):
+        if not self.db_conn:
+            return
+
+        import pandas as pd
+        from rich.table import Table
+        from rich import box
+        from scripts import db
+
+        raw_df = db.read_results(self.db_conn)
+        if raw_df.empty:
+            return
+
+        summary_df = raw_df.groupby(['dataset', 'algorithm'], as_index=False)[['time_micros', 'time_per_change']].mean()
+
+        table = Table(title="Incremental vs Batch Execution Time", box=box.SIMPLE, show_header=True, header_style="bold yellow")
+        table.add_column("Dataset", style="cyan")
+        table.add_column("Algorithm", style="green")
+        table.add_column("Total Time (Batch)", justify="right")
+        table.add_column("Time Per Change (Streaming)", justify="right")
+
+        for _, row in summary_df.sort_values(by=["dataset", "algorithm"]).iterrows():
+            t_batch = f"{row['time_micros']:,.0f} µs" if pd.notna(row['time_micros']) else "N/A"
+            t_stream = f"{row['time_per_change']:,.2f} µs" if pd.notna(row['time_per_change']) else "N/A"
+
+            table.add_row(
+                str(row['dataset']),
+                str(row['algorithm']),
+                t_batch,
+                t_stream
+            )
+
+        self.console.print(table)
 
 def main():
     IncrementalVsBatch().run()

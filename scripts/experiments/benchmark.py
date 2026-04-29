@@ -13,8 +13,14 @@ class Benchmark(Experiment):
     def __init__(self):
         super().__init__("benchmark")
 
+    def add_custom_args(self, parser):
+        parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
+        if self.args.baseline and self.args.baseline not in self.args.algorithm:
+            self.logger.warning(
+                f"[!] The specified baseline '{self.args.baseline}' is not in the active algorithms list.")
+
     def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
-        metrics : list[dict] = []
+        metrics: list[dict] = []
         for algo_name, algo_config in self.active_algos.items():
             params = self._resolve_algo_params(algo_config)
 
@@ -37,7 +43,7 @@ class Benchmark(Experiment):
 
         return metrics
 
-    def print_table(self):
+    def output(self):
         if not self.db_conn:
             self.logger.warning("No database connection. Skipping table generation.")
             return
@@ -72,7 +78,8 @@ class Benchmark(Experiment):
 
         global_summary_df = global_avg_df.apply(format_global_row, axis=1).sort_values(by="Algorithm")
 
-        avg_table = Table(title="Average Across All Datasets", box=box.SIMPLE, show_header=True, header_style="bold green")
+        avg_table = Table(title="Average Across All Datasets", box=box.SIMPLE, show_header=True,
+                          header_style="bold green")
         for col in global_summary_df.columns:
             avg_table.add_column(str(col))
 
@@ -88,6 +95,7 @@ class Benchmark(Experiment):
         for line in capture.get().splitlines():
             if line.strip():
                 self.logger.debug(line)
+
 
 def main():
     Benchmark().run()

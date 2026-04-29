@@ -117,6 +117,39 @@ class CompressionOverTime(Experiment):
 
         return metrics
 
+    def output(self):
+        if not self.db_conn:
+            return
+
+        import pandas as pd
+        from rich.table import Table
+        from rich import box
+        from scripts import db
+
+        raw_df = db.read_results(self.db_conn)
+        if raw_df.empty:
+            return
+
+        # We only care about ratio across different checkpoints
+        summary_df = raw_df.groupby(['dataset', 'algorithm', 'change_ratio'], as_index=False)['ratio'].mean()
+
+        table = Table(title="Compression Ratio Over Time", box=box.SIMPLE, show_header=True, header_style="bold yellow")
+        table.add_column("Dataset", style="cyan")
+        table.add_column("Algorithm", style="green")
+        table.add_column("Checkpoint", justify="right")
+        table.add_column("Avg Ratio", justify="right")
+
+        for _, row in summary_df.sort_values(by=["dataset", "algorithm", "change_ratio"]).iterrows():
+            pct = float(row['change_ratio']) * 100
+            table.add_row(
+                str(row['dataset']),
+                str(row['algorithm']),
+                f"{pct:.0f}%",
+                f"{row['ratio']:.5f}"
+            )
+
+        self.console.print(table)
+
 def main():
     CompressionOverTime().run()
 
