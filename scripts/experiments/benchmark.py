@@ -38,7 +38,7 @@ class Benchmark(Experiment):
                     "run": i + 1,
                     "time": t,
                     "ratio": r,
-                    "parameters": json.dumps(params),
+                    **params,
                 })
 
         return metrics

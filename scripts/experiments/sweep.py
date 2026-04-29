@@ -1,23 +1,21 @@
-from rich import json
-
+import json
 from scripts.config import PARAM_CONFIG
 from scripts.experiments.base_experiment import Experiment
-
 
 class ParameterSweep(Experiment):
     def __init__(self):
         super().__init__("sweep")
-        self.all_times_dict, self.all_ratios_dict = {}, {}
         config = PARAM_CONFIG[self.args.param]
         self.sweep_values = list(range(*self.args.range)) if self.args.range else (
             self.args.values if self.args.values else config["bounds"])
 
     def add_custom_args(self, parser):
         parser.add_argument("--param", choices=list(PARAM_CONFIG.keys()), required=True)
-        parser.add_argument("--range", type=int, nargs=3, required=True)
+        parser.add_argument("--range", type=int, nargs=3, required=False) # Changed to False since values can fallback
+        parser.add_argument("--values", type=int, nargs="+", required=False)
 
     def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
-        metrics : list[dict] = []
+        metrics: list[dict] = []
         for val in self.sweep_values:
             self.logger.info(f"{self.args.param} = {val}:")
             for algo_name, algo_config in self.active_algos.items():
@@ -35,6 +33,9 @@ class ParameterSweep(Experiment):
                     dataset_short_name=dataset_short_name,
                 )
 
+                if t_list is None or r_list is None:
+                    continue
+
                 for i, (t, r) in enumerate(zip(t_list, r_list)):
                     metrics.append({
                         "dataset": dataset_short_name,
@@ -42,7 +43,9 @@ class ParameterSweep(Experiment):
                         "run": i + 1,
                         "time": t,
                         "ratio": r,
-                        "parameters": json.dumps(params),
+                        "param_name": self.args.param,
+                        "param": val,
+                        **params,
                     })
         return metrics
 
@@ -59,22 +62,22 @@ class ParameterSweep(Experiment):
         if raw_df.empty:
             return
 
-        # Group by dataset, algorithm, and the parameter we swept over
-        param = self.args.param
-        summary_df = raw_df.groupby(['dataset', 'algorithm', param], as_index=False)[['time', 'ratio']].mean()
+        param_name = self.args.param
+        # We group by the explicit 'param' column we just created
+        summary_df = raw_df.groupby(['dataset', 'algorithm', 'param'], as_index=False)[['time', 'ratio']].mean()
 
-        table = Table(title=f"Parameter Sweep Summary: {param.upper()}", box=box.SIMPLE, show_header=True, header_style="bold yellow")
+        table = Table(title=f"Parameter Sweep Summary: {param_name.upper()}", box=box.SIMPLE, show_header=True, header_style="bold yellow")
         table.add_column("Dataset", style="cyan")
         table.add_column("Algorithm", style="green")
-        table.add_column(f"Param: {param.upper()}", style="magenta", justify="right")
+        table.add_column(f"Param: {param_name.upper()}", style="magenta", justify="right")
         table.add_column("Avg Time", justify="right")
         table.add_column("Avg Ratio", justify="right")
 
-        for _, row in summary_df.sort_values(by=["dataset", "algorithm", param]).iterrows():
+        for _, row in summary_df.sort_values(by=["dataset", "algorithm", "param"]).iterrows():
             table.add_row(
                 str(row['dataset']),
                 str(row['algorithm']),
-                str(row[param]),
+                str(row['param']),
                 f"{row['time']:.3f}s",
                 f"{row['ratio']:.5f}"
             )
@@ -86,4 +89,4 @@ def main():
 
 
 if __name__ == "__main__":
-    ParameterSweep().run()
+    main()

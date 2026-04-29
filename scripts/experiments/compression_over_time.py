@@ -112,7 +112,7 @@ class CompressionOverTime(Experiment):
                         "algorithm": algo_name,
                         "change_ratio": checkpoint,
                         "ratio": r_avg,
-                        "parameters": json.dumps(params),
+                        **params,
                     })
 
         return metrics
