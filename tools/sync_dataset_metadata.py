@@ -4,7 +4,7 @@ from tabulate import tabulate
 
 from scripts.config import DATASETS, OUTPUT_DIR
 from scripts.utils import setup_logging, download_dataset
-from scripts.runners import get_runner
+from scripts.runners.base_runner import get_runner
 
 def analyze_graph(file_path):
     """Performs a single pass over the CLEANED file to extract core metrics."""

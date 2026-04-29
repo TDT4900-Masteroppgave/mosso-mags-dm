@@ -1,9 +1,9 @@
-import os
+from pathlib import Path
 
-OUTPUT_DIR = "output"
-DATASETS_DIR = "datasets"
-BENCHMARK_DIR = os.path.join(OUTPUT_DIR, "benchmarks")
-VERSIONS_DIR = os.path.join(BENCHMARK_DIR, "versions")
+OUTPUT_DIR = Path("output")
+DATASETS_DIR = Path("datasets")
+EXPERIMENT_DIR = OUTPUT_DIR / "experiments"
+ALGORITHMS_DIR = OUTPUT_DIR / "algorithms"
 
 BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
@@ -26,7 +26,7 @@ ALGORITHMS = {
     "kdd20-mosso": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
-        "params" : {"c": 234, "e": 2},
+        "params": {"c": 120, "e": 3},
         "type": "mosso",
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
@@ -70,14 +70,14 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "feature/merging_strategy_2_2hop",
         "type": "mosso",
-        "template": ["e", "c",  "interval"],
+        "template": ["e", "c", "interval"],
         "binary_file": "mosso-strat_2_2hop.jar",
     },
     "strat_div": {
         "repo": BASE_REPO_URL,
         "branch": "feature/dividing-strategy",
         "type": "mosso",
-        "template": ["e", "c",  "interval", "cap"],
+        "template": ["e", "c", "interval", "cap"],
         "binary_file": "mosso-strat_div.jar",
     },
     "fix_testing_nodes": {
@@ -104,124 +104,119 @@ ALGORITHMS = {
 }
 
 DATASETS = {
+    "CA": {
+        "url": "https://snap.stanford.edu/data/as-caida20071105.txt.gz",
+        "filename": "as-caida20071105.txt",
+        "meta": {
+            "nodes": 26475,
+            "edges": 53381,
+            "size": "0.66 MB",
+            "avg_degree": 4.03,
+            "density": 1.523215e-04,
+        },
+    },
+    "EN": {
+        "url": "https://snap.stanford.edu/data/email-Enron.txt.gz",
+        "filename": "Email-Enron.txt",
+        "meta": {
+            "nodes": 36692,
+            "edges": 183831,
+            "size": "2.11 MB",
+            "avg_degree": 10.02,
+            "density": 2.730976e-04,
+        },
+    },
+    "BK": {
+        "url": "https://snap.stanford.edu/data/loc-brightkite_edges.txt.gz",
+        "filename": "Brightkite_edges.txt",
+        "meta": {
+            "nodes": 58228,
+            "edges": 214078,
+            "size": "2.59 MB",
+            "avg_degree": 7.35,
+            "density": 1.262832e-04,
+        },
+    },
+    "EA": {
+        "url": "https://snap.stanford.edu/data/email-EuAll.txt.gz",
+        "filename": "Email-EuAll.txt",
+        "meta": {
+            "nodes": 265009,
+            "edges": 364481,
+            "size": "4.52 MB",
+            "avg_degree": 2.75,
+            "density": 1.037971e-05,
+        },
+    },
+    "SL": {
+        "url": "https://snap.stanford.edu/data/soc-Slashdot0902.txt.gz",
+        "filename": "Slashdot0902.txt",
+        "meta": {
+            "nodes": 82168,
+            "edges": 504230,
+            "size": "6.18 MB",
+            "avg_degree": 12.27,
+            "density": 1.493683e-04,
+        },
+    },
+    "DB": {
+        "url": "https://snap.stanford.edu/data/bigdata/communities/com-dblp.ungraph.txt.gz",
+        "filename": "com-dblp.ungraph.txt",
+        "meta": {
+            "nodes": 317080,
+            "edges": 1049866,
+            "size": "15.29 MB",
+            "avg_degree": 6.62,
+            "density": 2.088467e-05,
+        },
+    },
+    "AM": {
+        "url": "https://snap.stanford.edu/data/amazon0601.txt.gz",
+        "filename": "amazon0601.txt",
+        "meta": {
+            "nodes": 403394,
+            "edges": 2443408,
+            "size": "35.09 MB",
+            "avg_degree": 12.11,
+        },
+    },
+    "YT": {
+        "url": "https://snap.stanford.edu/data/bigdata/communities/com-youtube.ungraph.txt.gz",
+        "filename": "com-youtube.ungraph.txt",
+        "meta": {
+            "nodes": 1134890,
+            "edges": 2987624,
+            "size": "42.63 MB",
+            "avg_degree": 5.27,
+        },
+    },
+    "SK": {
+        "url": "https://snap.stanford.edu/data/as-skitter.txt.gz",
+        "filename": "as-skitter.txt",
+        "meta": {
+            "nodes": 1696415,
+            "edges": 11095298,
+            "size": "163.36 MB",
+            "avg_degree": 13.08,
+        },
+    },
+    "LJ": {
+        "url": "https://snap.stanford.edu/data/bigdata/communities/com-lj.ungraph.txt.gz",
+        "filename": "com-lj.ungraph.txt",
+        "meta": {
+            "nodes": 3997962,
+            "edges": 34681189,
+            "size": "544.47 MB",
+            "avg_degree": 17.35,
+        },
+    },
+}
+
+DATASET_GROUP = {
     "small": [
-        {
-            "url": "https://snap.stanford.edu/data/as-caida20071105.txt.gz",
-            "filename": "as-caida20071105.txt",
-            "short_name": "CA",
-            "meta": {
-                "nodes": 26475,
-                "edges": 53381,
-                "size": "0.66 MB",
-                "avg_degree": 4.03,
-                "density": 1.523215e-04,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/email-Enron.txt.gz",
-            "filename": "Email-Enron.txt",
-            "short_name": "EN",
-            "meta": {
-                "nodes": 36692,
-                "edges": 183831,
-                "size": "2.11 MB",
-                "avg_degree": 10.02,
-                "density": 2.730976e-04,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/loc-brightkite_edges.txt.gz",
-            "filename": "Brightkite_edges.txt",
-            "short_name": "BK",
-            "meta": {
-                "nodes": 58228,
-                "edges": 214078,
-                "size": "2.59 MB",
-                "avg_degree": 7.35,
-                "density": 1.262832e-04,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/email-EuAll.txt.gz",
-            "filename": "Email-EuAll.txt",
-            "short_name": "EA",
-            "meta": {
-                "nodes": 265009,
-                "edges": 364481,
-                "size": "4.52 MB",
-                "avg_degree": 2.75,
-                "density": 1.037971e-05,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/soc-Slashdot0902.txt.gz",
-            "filename": "Slashdot0902.txt",
-            "short_name": "SL",
-            "meta": {
-                "nodes": 82168,
-                "edges": 504230,
-                "size": "6.18 MB",
-                "avg_degree": 12.27,
-                "density": 1.493683e-04,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/bigdata/communities/com-dblp.ungraph.txt.gz",
-            "filename": "com-dblp.ungraph.txt",
-            "short_name": "DB",
-            "meta": {
-                "nodes": 317080,
-                "edges": 1049866,
-                "size": "15.29 MB",
-                "avg_degree": 6.62,
-                "density": 2.088467e-05,
-            },
-        }
+        "CA", "EN", "BK", "EA", "SL", "DB"
     ],
     "large": [
-        {
-            "url": "https://snap.stanford.edu/data/amazon0601.txt.gz",
-            "filename": "amazon0601.txt",
-            "short_name": "AM",
-            "meta": {
-                "nodes": 403394,
-                "edges": 2443408,
-                "size": "35.09 MB",
-                "avg_degree": 12.11,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/bigdata/communities/com-youtube.ungraph.txt.gz",
-            "filename": "com-youtube.ungraph.txt",
-            "short_name": "YT",
-            "meta": {
-                "nodes": 1134890,
-                "edges": 2987624,
-                "size": "42.63 MB",
-                "avg_degree": 5.27,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/as-skitter.txt.gz",
-            "filename": "as-skitter.txt",
-            "short_name": "SK",
-            "meta": {
-                "nodes": 1696415,
-                "edges": 11095298,
-                "size": "163.36 MB",
-                "avg_degree": 13.08,
-            },
-        },
-        {
-            "url": "https://snap.stanford.edu/data/bigdata/communities/com-lj.ungraph.txt.gz",
-            "filename": "com-lj.ungraph.txt",
-            "short_name": "LJ",
-            "meta": {
-                "nodes": 3997962,
-                "edges": 34681189,
-                "size": "544.47 MB",
-                "avg_degree": 17.35,
-            },
-        }
+        "AM", "YT", "SK", "LJ"
     ]
 }

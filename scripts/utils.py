@@ -5,10 +5,12 @@ import os
 import platform
 import subprocess
 import sys
+from typing import List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
-from scripts.config import BENCHMARK_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, VERSIONS_DIR
+from scripts.config import EXPERIMENT_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, ALGORITHMS_DIR, DATASET_GROUP
 
 
 def setup_logging(log_file_path: str):
@@ -82,86 +84,83 @@ def get_fastutil_path() -> str:
 
 
 def setup_directories() -> None:
-    for d in [DATASETS_DIR, OUTPUT_DIR, BENCHMARK_DIR, VERSIONS_DIR]:
+    for d in [DATASETS_DIR, OUTPUT_DIR, EXPERIMENT_DIR, ALGORITHMS_DIR]:
         os.makedirs(d, exist_ok=True)
 
 
 def get_datasets_to_run(args) -> list[dict]:
-    datasets: list[dict] = []
+    datasets = []
 
     if getattr(args, "dataset", None):
-        all_available = [d for group in DATASETS.values() for d in group]
         for req in args.dataset:
-            matched = next(
-                (d for d in all_available if d["short_name"] == req or d["filename"] == req),
-                None,
-            )
-            if matched:
-                if matched not in datasets:
-                    datasets.append(matched)
+            if req in DATASETS:
+                ds = DATASETS[req].copy()
+                ds["short_name"] = req
+                datasets.append(ds)
             else:
-                print(f"[!] Warning: Dataset '{req}' not found in configuration. Skipping.")
+                print(f"[!] Warning: Dataset '{req}' not found.")
 
-        if not datasets:
-            raise ValueError("No valid datasets found based on your --dataset argument.")
-    else:
+    elif getattr(args, "group", None):
         if args.group == "all":
-            for group_datasets in DATASETS.values():
-                datasets.extend(group_datasets)
+            keys_to_run = list(DATASETS.keys())
         else:
-            datasets = DATASETS.get(args.group, [])
-            if not datasets:
-                raise ValueError(f"Dataset group '{args.group}' not found in config.")
+            keys_to_run = DATASET_GROUP.get(args.group, [])
+
+        for key in keys_to_run:
+            ds = DATASETS[key].copy()
+            ds["short_name"] = key
+            datasets.append(ds)
 
     return datasets
 
+def format_long_dataframe_with_baseline(df: pd.DataFrame, baseline_algo: str | None = None) -> pd.DataFrame:
+    """Aggregates raw results into averages and formats them with baseline speedup multipliers."""
+    if df.empty:
+        return df
 
-def format_dataframe_with_baseline(
-    df: pd.DataFrame,
-    strategies: list[str],
-    baseline_algo: str | None = None,
-    time_prefix: str = "Time_",
-    ratio_prefix: str = "Ratio_",
-) -> pd.DataFrame:
-    """Format time/ratio columns with ±std and optional speedup vs baseline."""
-    display_df = df.copy()
+    summary = df.groupby(['dataset', 'algorithm'], as_index=False)[['time', 'ratio']].mean()
 
-    for strat in strategies:
-        time_col = f"{time_prefix}{strat}"
-        ratio_col = f"{ratio_prefix}{strat}"
-        t_std_col = f"{time_prefix}std_{strat}"
-        r_std_col = f"{ratio_prefix}std_{strat}"
+    baselines = {}
+    if baseline_algo and baseline_algo in summary['algorithm'].values:
+        baselines = summary[summary['algorithm'] == baseline_algo].set_index('dataset').to_dict('index')
 
-        formatted_times, formatted_ratios = [], []
+    def format_row(row):
+        t, r = row['time'], row['ratio']
+        t_str, r_str = f"{t:.3f}s", f"{r:.5f}"
 
-        for _, row in df.iterrows():
-            t_val, r_val = row.get(time_col), row.get(ratio_col)
-            t_std = row.get(t_std_col, 0.0)
-            r_std = row.get(r_std_col, 0.0)
+        base = baselines.get(row['dataset'])
+        if base and row['algorithm'] != baseline_algo:
+            # Append baseline multipliers
+            if t > 0 and base['time'] > 0:
+                t_str += f" [green]({base['time'] / t:.2f}x)[/green]"
+            if base['ratio'] > 0:
+                r_str += f" [green]({r / base['ratio']:.2f}x)[/green]"
 
-            t_str = (
-                f"{t_val:.3f}s ± {t_std:.3f}s" if t_std and t_std > 0 else f"{t_val:.3f}s"
-            ) if pd.notna(t_val) else "N/A"
+        return pd.Series({
+            "Dataset": str(row['dataset']).capitalize(),
+            "Algorithm": row['algorithm'],
+            "Avg Time": t_str,
+            "Avg Ratio": r_str
+        })
 
-            r_str = (
-                f"{r_val:.5f} ± {r_std:.5f}" if r_std and r_std > 0 else f"{r_val:.5f}"
-            ) if pd.notna(r_val) else "N/A"
+    return summary.apply(format_row, axis=1).sort_values(by=["Dataset", "Algorithm"])
 
-            if baseline_algo and baseline_algo in strategies and strat != baseline_algo:
-                t_base = row.get(f"{time_prefix}{baseline_algo}")
-                r_base = row.get(f"{ratio_prefix}{baseline_algo}")
-
-                if pd.notna(t_val) and pd.notna(t_base) and t_val > 0:
-                    t_str += f" ({t_base / t_val:.2f}x)"
-
-                if pd.notna(r_val) and pd.notna(r_base) and r_base > 0:
-                    r_str += f" ({r_val / r_base:.2f}x)"
-
-            formatted_times.append(t_str)
-            formatted_ratios.append(r_str)
-
-        display_df[time_col] = formatted_times
-        display_df[ratio_col] = formatted_ratios
-
-    std_cols = [c for c in display_df.columns if "_std_" in c]
-    return display_df.drop(columns=std_cols)
+def get_confidence_interval(
+        xs: List[float],
+        stat=np.median,
+        n: int = 10000,
+        alpha: float = 0.05,
+        seed: Optional[int] = None,
+) -> Tuple[float, float]:
+    """Non-parametric bootstrap confidence interval for *stat* applied to *xs*.
+    Returns (lower, upper) bounds at the (alpha/2, 1-alpha/2) percentiles.
+    """
+    if not xs:
+        return float("nan"), float("nan")
+    rng = np.random.default_rng(seed)
+    arr = np.asarray(xs, dtype=float)
+    resampled = rng.choice(arr, size=(n, len(arr)), replace=True)
+    stats = stat(resampled, axis=1)
+    lo = float(np.percentile(stats, 100 * alpha / 2))
+    hi = float(np.percentile(stats, 100 * (1 - alpha / 2)))
+    return lo, hi

@@ -6,7 +6,6 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from typing import Optional
 
 from scripts.config import DATASETS_DIR
 
@@ -90,13 +89,13 @@ def create_partial_dataset(
 def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch: str, logger) -> None:
     try:
         if not os.path.exists(target_dir):
-            logger.info(f"    -> [{algo_name}] Target directory not found. Cloning fresh...")
+            logger.debug(f"[{algo_name}] Target directory not found. Cloning fresh...")
             subprocess.run(
                 ["git", "clone", "-q", "--branch", branch, "--single-branch", repo_url, target_dir],
                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
             )
         else:
-            logger.info(f"    -> [{algo_name}] Target directory exists. Pulling latest updates...")
+            logger.debug(f"[{algo_name}] Target directory exists. Pulling latest updates...")
             subprocess.run(
                 ["git", "pull", "-q"], cwd=target_dir,
                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
