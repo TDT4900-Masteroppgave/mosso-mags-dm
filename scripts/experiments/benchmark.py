@@ -13,11 +13,11 @@ class Benchmark(Experiment):
     def __init__(self):
         super().__init__("benchmark")
 
+        if self.args.baseline and self.args.baseline not in self.args.algorithm:
+            self.console.print(f"[bold red]Error: Baseline '{self.args.baseline}' must be included in algorithms list: {self.args.algorithm}[/]")
+
     def add_custom_args(self, parser):
         parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
-        if self.args.baseline and self.args.baseline not in self.args.algorithm:
-            self.logger.warning(
-                f"[!] The specified baseline '{self.args.baseline}' is not in the active algorithms list.")
 
     def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
         metrics: list[dict] = []
