@@ -421,19 +421,36 @@ public class MoSSo extends SupernodeHelper {
                     }
     
                     if (randInt(1, getDegree(testing_node)) <= 1) {
-    
-                        // choose random node in the cluster containing nbd
-                        int target = partition.getInt(randInt(0, partition.size() - 1));
-                        double similarity = calculateMH(testing_node, target, -1); // no current best similarity, hence -1
+                        long mh = minHash[which].getInt(testing_node);
                         
-                        if (similarity >= thr) {
+                        // MAGS-DM: Similarity Measure
+                        int bestTarget = -1;
+                        double maxSimilarity = -1.0;
+
+                        IntArrayList candidatePool = srcGrp.get(mh);
+                        for (int candidate: candidatePool) {
+                            if (candidate == testing_node) continue;
+
+                            double similarity = calculateMH(testing_node, candidate, maxSimilarity);
+
+                            if (similarity > maxSimilarity) {
+                                maxSimilarity = similarity;
+                                bestTarget = candidate;
+                            }
+                        }
+
+                        if (bestTarget == -1) {
+                            bestTarget = testing_node;
+                        }
+                        
+                        if (maxSimilarity >= thr) {
                             
                             // Mark the node as tested -> it passed the thr test, so it should never be tested again
                             passedThr.add(testing_node);
 
                             // Proceed with MoSSo's original update logic using the newly found best target
                             if (randInt(1, 10) > escape || iteration < 1000) {
-                                tryNodalUpdate(testing_node, V.getInt(target));
+                                tryNodalUpdate(testing_node, V.getInt(bestTarget));
                             } else {
                                 // only if the supernode containing nbd is not singleton
                                 if(getSize(V.getInt(testing_node)) > 1) tryNodalUpdate(testing_node, newSupernode());
