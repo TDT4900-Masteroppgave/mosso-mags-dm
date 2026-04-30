@@ -197,7 +197,7 @@ def parse_and_filter_args(script_type="benchmark"):
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--samples", type=int, default=120)
     parser.add_argument("--escape", type=int, default=3)
-    parser.add_argument("--b", type=int, default=5)
+    parser.add_argument("--h", type=int, default=4)
     parser.add_argument("--interval", type=int, default=1000)
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--group", choices=["all"] + list(DATASETS.keys()), default="all")
