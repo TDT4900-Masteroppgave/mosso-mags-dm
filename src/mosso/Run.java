@@ -26,10 +26,10 @@ public class Run {
             final int probability = Integer.parseInt(args[3]);
             final int n_samples = Integer.parseInt(args[4]);
             final int interval = Integer.parseInt(args[5]);
-            final int bCandidates = Integer.parseInt(args[6]);
-            final int h = Integer.parseInt(args[7]);
-            System.out.println("escape probability : " + probability + ", n_samples : " + n_samples + ", TT : " + interval + ", bCandidates : " + bCandidates + ", h : " + h);
-            module = new MoSSo(false, probability, n_samples, interval, bCandidates, h);
+            final int h = Integer.parseInt(args[6]);
+            final int bCandidates = Integer.parseInt(args[7]);
+            System.out.println("escape probability : " + probability + ", n_samples : " + n_samples + ", TT : " + interval + ", h : " + h + ", bCandidates : " + bCandidates);
+            module = new MoSSo(false, probability, n_samples, interval, h, bCandidates);
         } else if (sumMode.compareTo("simple") == 0) {
             final int probability = Integer.parseInt(args[3]);
             final int n_samples = Integer.parseInt(args[4]);

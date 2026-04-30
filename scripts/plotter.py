@@ -12,34 +12,21 @@ def plot_results(csv_file, plot_file, logger):
     ratio_cols = [f"Ratio_{s}" for s in strategies]
     time_cols = [f"Time_{s}" for s in strategies]
 
-    if not ratio_cols or not time_cols:
-        logger.warning("[!] No valid Time or Ratio data found to plot. Skipping plot generation.")
-        return
-
-    valid_ratio_cols = [c for c in ratio_cols if c in df.columns]
-    valid_time_cols = [c for c in time_cols if c in df.columns]
-
-    if not valid_ratio_cols and not valid_time_cols:
-        logger.warning("[!] No valid columns found in dataframe. Skipping plot.")
-        return
-
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
     # Use a dynamic colormap
     cmap = plt.get_cmap('tab10')
     colors = cmap(np.linspace(0, 1, len(strategies)))
 
-    if valid_ratio_cols:
-        df.plot(x="Dataset", y=valid_ratio_cols, kind="bar", ax=axes[0], color=colors[:len(valid_ratio_cols)])
-        axes[0].set_title("Compression Ratio (Lower is Better)")
-        axes[0].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
-        axes[0].legend([c.replace("Ratio_", "") for c in valid_ratio_cols])
+    df.plot(x="Dataset", y=ratio_cols, kind="bar", ax=axes[0], color=colors)
+    axes[0].set_title("Compression Ratio (Lower is Better)")
+    axes[0].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
+    axes[0].legend(strategies)
 
-    if valid_time_cols:
-        df.plot(x="Dataset", y=valid_time_cols, kind="bar", ax=axes[1], color=colors[:len(valid_time_cols)])
-        axes[1].set_title("Execution Time (Seconds)")
-        axes[1].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
-        axes[1].legend([c.replace("Time_", "") for c in valid_time_cols])
+    df.plot(x="Dataset", y=time_cols, kind="bar", ax=axes[1], color=colors)
+    axes[1].set_title("Execution Time (Seconds)")
+    axes[1].tick_params(axis='x', rotation=45 if len(df) > 1 else 0)
+    axes[1].legend(strategies)
 
     plt.tight_layout()
     plt.savefig(plot_file)
@@ -67,7 +54,7 @@ def plot_runs_variance(dataset_name, all_times_dict, all_ratios_dict, runs_dir):
     axes[1].legend()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(runs_dir, f"{dataset_name}.pdf"))
+    plt.savefig(os.path.join(runs_dir, f"{dataset_name}_variance_plot.pdf"))
     plt.close()
 
 def plot_parameter_analysis(csv_file, param_name, plot_file):
@@ -85,16 +72,13 @@ def plot_parameter_analysis(csv_file, param_name, plot_file):
     for idx, strat in enumerate(strategies):
         marker = markers[idx % len(markers)]
         color = colors[idx]
+
+        # Style baseline as a dashed line to stand out
         line_style ='-'
         line_width = 2.5
 
-        if f'Ratio_{strat}' in avg_df.columns and not avg_df[f'Ratio_{strat}'].isnull().all():
-            axes[0].plot(avg_df[param_name], avg_df[f'Ratio_{strat}'], marker=marker,
-                         linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
-
-        if f'Time_{strat}' in avg_df.columns and not avg_df[f'Time_{strat}'].isnull().all():
-            axes[1].plot(avg_df[param_name], avg_df[f'Time_{strat}'], marker=marker,
-                         linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
+        axes[0].plot(avg_df[param_name], avg_df[f'Ratio_{strat}'], marker=marker, linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
+        axes[1].plot(avg_df[param_name], avg_df[f'Time_{strat}'], marker=marker, linestyle=line_style, color=color, linewidth=line_width, markersize=8, label=strat)
 
     axes[0].set_title(f"Average Compression Ratio vs {param_name.upper()}", fontsize=14, fontweight='bold')
     axes[0].set_xlabel(f"Parameter: {param_name.upper()}", fontsize=12)
@@ -114,85 +98,4 @@ def plot_parameter_analysis(csv_file, param_name, plot_file):
 
     plt.tight_layout()
     plt.savefig(plot_file)
-    plt.close()
-
-# In get_pareto_front_2d()
-def get_pareto_front_2d(df, x_col, y_col):
-    """
-    Calculates the Pareto front
-    """
-    sorted_df = df.sort_values(by=[x_col, y_col])
-
-    pareto_indices = []
-    min_y = float('inf')
-
-    for index, row in sorted_df.iterrows():
-        if row[y_col] < min_y:
-            pareto_indices.append(index)
-            min_y = row[y_col]
-
-    return df.loc[pareto_indices].copy()
-
-def plot_pareto_front(csv_file, plot_file, logger):
-    df = pd.read_csv(csv_file)
-    if df.empty: return
-
-    datasets = df['Dataset'].unique()
-    n_datasets = len(datasets)
-    cols = 2
-    rows = (n_datasets + 1) // cols
-    if n_datasets == 1:
-        cols = 1
-        rows = 1
-
-    fig, axes = plt.subplots(rows, cols, figsize=(8 * cols, 6 * rows))
-    if n_datasets == 1:
-        axes = [axes]
-    else:
-        axes = axes.flatten()
-
-    for i, dataset in enumerate(datasets):
-        ax = axes[i]
-        ds_df = df[df['Dataset'] == dataset]
-
-        algos = ds_df['Algorithm'].unique()
-        cmap = plt.get_cmap('tab10')
-        colors = {algo: cmap(j) for j, algo in enumerate(algos)}
-
-        for algo in algos:
-            algo_df = ds_df[ds_df['Algorithm'] == algo]
-            ax.scatter(algo_df['Time'], algo_df['Ratio'],
-                       color=colors[algo], alpha=0.3, s=30, edgecolors='none', label=f'{algo} (All)')
-
-        for algo in algos:
-            algo_df = ds_df[ds_df['Algorithm'] == algo]
-            pareto_df = get_pareto_front_2d(algo_df, 'Time', 'Ratio')
-
-            if not pareto_df.empty:
-                # Sort by Time so the line connects properly left-to-right
-                pareto_df = pareto_df.sort_values('Time')
-
-                # Draw the Pareto line for this specific algorithm
-                ax.plot(pareto_df['Time'], pareto_df['Ratio'],
-                        color=colors[algo], linestyle='-', linewidth=2, alpha=0.9, label=f'{algo} (Front)')
-
-                # Highlight the Pareto-optimal stars
-                ax.scatter(pareto_df['Time'], pareto_df['Ratio'],
-                           color=colors[algo], edgecolor='black', zorder=5, s=150, marker='*', label=f'{algo} (Optimal)')
-
-        ax.set_title(f"Optimization Landscape: {dataset}", fontsize=13, fontweight='bold')
-        ax.set_xlabel("Execution Time (Seconds) ↓" if dataset != "GLOBAL_NORMALIZED_AVERAGE" else "Normalized Time Score ↓", fontsize=11)
-        ax.set_ylabel("Compression Ratio ↓" if dataset != "GLOBAL_NORMALIZED_AVERAGE" else "Normalized Ratio Score ↓", fontsize=11)
-        ax.grid(True, linestyle=':', alpha=0.6)
-
-        handles, labels = ax.get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=9)
-
-    # Clean up empty subplots
-    for j in range(i + 1, len(axes)):
-        fig.delaxes(axes[j])
-
-    plt.tight_layout()
-    plt.savefig(plot_file, format="pdf", bbox_inches="tight")
     plt.close()

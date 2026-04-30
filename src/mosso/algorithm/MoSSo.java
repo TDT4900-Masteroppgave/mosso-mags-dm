@@ -24,7 +24,7 @@ public class MoSSo extends SupernodeHelper {
     private int ecnt = 0;
     private int interval;
 
-    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval, int _bCandidates, final int h) {
+    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval, final int h, int _bCandidates) {
         super(directed);
         if(directed){
             try {
