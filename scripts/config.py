@@ -209,9 +209,9 @@ DATASETS = {
 
 DATASET_GROUP = {
     "small": [
-        "CA", "EN", "BK", "EA", "SL", "DB"
+        "CA", "EN", "BK", "EA", "SL",
     ],
     "large": [
-        "AM", "YT", "SK", "LJ"
+        "DB", "AM", "YT", "SK", "LJ"
     ]
 }
