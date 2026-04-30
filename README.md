@@ -30,6 +30,47 @@ cd mosso-mags-dm
 pip install -r requirements.txt
 ```
 
+## Overview of Strategies
+
+| Name | Branch | Origin | Parameters | Description | Implemented |
+|---|---|---|---|---|---|
+| `kdd20-mosso` | main | mosso | e, c, interval |
+| `cp_mosso_simple` | mosso_strat/cp_mosso_simple | mosso | e, c, interval | | :white_check_mark: |
+| `tp_mosso_simple` | mosso_strat/tp_mosso_simple | mosso | e, c, interval | | :white_check_mark: |
+| `sm` | mags_strat/similarity_measure | mags | e, c, interval | | :white_check_mark: |
+| `sm_top_b` | mags_strat/similarity_measure_top_b | mags | e, c, interval | | :white_check_mark: |
+| `sm_thr` | mags_strat/similarity_measure_thr | mags | e, c, interval | | :white_check_mark: |
+| `ds` | mags_strat/divide_strategy | mags | e, c, interval | | :white_check_mark: |
+| `ds_thr` | mags_strat/divide_strategy_thr | mags | e, c, interval | | :white_check_mark: |
+| `ds_sm_thr` | mags_strat/divide_strategy_similarity_measure_thr | mags | e, c, interval | | :white_check_mark: |
+| `cap` | mags_strat/cap | mags | e, c, interval | | :white_check_mark: |
+| `sm_top_b_thr` | mags_strat/similarity_measure_top_b_thr | mags | e, c, interval | | :x: |
+| `saving` | mags_strat/saving_func | mags | e, c, interval | | :x: |
+| `fix_testing_nodes` | strat/fix_testing_nodes | authors | e, c, interval | | :white_check_mark: |
+| `excl_coarse_clustering` | strat/excl_coarse_clustering | authors | e, c, interval | | :white_check_mark: |
+| `sm_2hop` | strat/similarity_measure_2hop | authors | e, c, interval | | :white_check_mark: |
+| `tp_similar_nbrs` | strat/tp_similar_nbrs | authors | e, c, interval | | :white_check_mark: |
+| `random_top_b` | strat/random_top_b | authors | e, c, interval | | :white_check_mark: |
+| `prob_selection_similarity` | strat/prob_selection_similarity | authors | e, c, interval | | :white_check_mark: |
+| `one_processing_src_dst` | strat_deprecated/one_processing_src_dst | authors | e, c, interval | | :white_check_mark: |
+| `sm_opt` | strat_deprecated/similarity_measure_optimalization | authors | e, c, interval | | :white_check_mark: |
+
+### Parameters
+
+| Name | Description |
+|---|---|
+| `c` | Sample number | 
+| `e` | Probability for corrective escape | 
+| `interval` | Interval | 
+| `b` | Number of top-b candidates | 
+| `h` | Number of hash functions |
+| `thr_start` | Start value for a dynamic decreasing threshold | 
+| `thr_end` | End value for a dynamic decreasing threshold | 
+| `cap` | Maximum size for coarse clusters | 
+| `T` | Number of iterations | 
+
+
+
 ## Benchmark Modes
 
 The framework is driven by the `./run.sh` script, which routes commands to various Python benchmark modules. Use the `--type` flag to select your benchmark mode.
