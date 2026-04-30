@@ -10,9 +10,9 @@ from scripts.config import PARAM_CONFIG
 from scripts.experiments.base_experiment import Experiment
 
 
-class BayesianOpt(Experiment):
+class Bayesian(Experiment):
     def __init__(self):
-        super().__init__("bo")
+        super().__init__("bayesian")
 
     def add_custom_args(self, parser):
         parser.add_argument("--trials", type=int, default=30, help="Number of Optuna trials per algorithm.")
@@ -145,7 +145,7 @@ class BayesianOpt(Experiment):
 
 
 def main():
-    with BayesianOpt() as exp:
+    with Bayesian() as exp:
         exp.run()
 
 if __name__ == "__main__":
