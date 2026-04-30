@@ -1,13 +1,15 @@
-import json
+import pandas as pd
+
 from scripts.config import DATASETS
 from scripts.experiments.base_experiment import Experiment
 from pathlib import Path
+from rich.table import Table
+from rich import box
 
 def create_partial_dataset(
         dataset_path: str,
         fraction: float,
         total_edges: int,
-        logger=None,
 ) -> str:
     """Write a file containing the first (fraction * total_edges) unique edges.
 
@@ -23,12 +25,7 @@ def create_partial_dataset(
     partial_path = partial_dir / f"p{int(fraction * 100)}_{dataset_file.name}"
 
     if partial_path.exists():
-        if logger:
-            logger.debug(f"Using cached partial dataset: {partial_path}")
         return str(partial_path)
-
-    if logger:
-        logger.info(f"Generating partial dataset ({fraction*100:.0f}%): {partial_path}")
 
     edges_written = 0
     seen: set[tuple[int, int]] = set()
@@ -89,7 +86,7 @@ class CompressionOverTime(Experiment):
         total_edges = DATASETS[dataset_short_name]["meta"]["edges"]
 
         for checkpoint in checkpoints:
-            self.console.print(f"[bold yellow]--- Evaluating Checkpoint: {checkpoint*100:.0f}% ---[/bold yellow]")
+            self.logger.print(f"[bold yellow]--- Evaluating Checkpoint: {checkpoint * 100:.0f}% ---[/bold yellow]")
 
             partial_dataset_path = create_partial_dataset(dataset_path, checkpoint, total_edges)
             if not partial_dataset_path:
@@ -117,21 +114,8 @@ class CompressionOverTime(Experiment):
 
         return metrics
 
-    def output(self):
-        if not self.db_conn:
-            return
-
-        import pandas as pd
-        from rich.table import Table
-        from rich import box
-        from scripts import db
-
-        raw_df = db.read_results(self.db_conn)
-        if raw_df.empty:
-            return
-
-        # We only care about ratio across different checkpoints
-        summary_df = raw_df.groupby(['dataset', 'algorithm', 'change_ratio'], as_index=False)['ratio'].mean()
+    def output(self, df: pd.DataFrame):
+        summary_df = df.groupby(['dataset', 'algorithm', 'change_ratio'], as_index=False)['ratio'].mean()
 
         table = Table(title="Compression Ratio Over Time", box=box.SIMPLE, show_header=True, header_style="bold yellow")
         table.add_column("Dataset", style="cyan")
@@ -148,10 +132,11 @@ class CompressionOverTime(Experiment):
                 f"{row['ratio']:.5f}"
             )
 
-        self.console.print(table)
+        self.logger.print(table)
 
 def main():
-    CompressionOverTime().run()
+    with CompressionOverTime() as exp:
+        exp.run()
 
 if __name__ == "__main__":
     main()

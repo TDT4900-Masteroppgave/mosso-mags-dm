@@ -6,7 +6,6 @@ from rich.table import Table
 from rich.panel import Panel
 from rich import box
 
-from scripts import db
 from scripts.config import PARAM_CONFIG
 from scripts.experiments.base_experiment import Experiment
 
@@ -25,7 +24,7 @@ class BayesianOpt(Experiment):
 
         for algo_name, algo_config in self.active_algos.items():
             self.logger.debug(f"Starting Bayesian Optimization: {algo_name} on {dataset_short_name}")
-            self.console.print(f"[bold cyan]Starting Bayesian Optimization: {algo_name} on {dataset_short_name}[/]")
+            self.logger.print(f"[bold cyan]Starting Bayesian Optimization: {algo_name} on {dataset_short_name}[/]")
 
             def objective(trial):
                 params = self._resolve_algo_params(algo_config)
@@ -72,24 +71,17 @@ class BayesianOpt(Experiment):
 
         return metrics
 
-    def output(self):
-        if not self.db_conn: return
-        raw_df = db.read_results(self.db_conn)
-        if raw_df.empty: return
+    def output(self, df: pd.DataFrame):
+        df.columns = [c.lower() for c in df.columns]
 
-        # 1. Normalize column names to lowercase to match PARAM_CONFIG keys
-        raw_df.columns = [c.lower() for c in raw_df.columns]
-
-        # 2. Identify which parameters from our config actually exist in the DB
-        tunable_params = [p for p in PARAM_CONFIG.keys() if p in raw_df.columns]
+        tunable_params = [p for p in PARAM_CONFIG.keys() if p in df.columns]
 
         if not tunable_params:
-            self.console.print("[bold red]Error:[/] No parameter columns found. Check the saving process.")
+            self.logger.print("[bold red]Error:[/] No parameter columns found. Check the saving process.")
             return
 
-        full_df = raw_df.copy()
+        full_df = df.copy()
 
-        # 3. Ensure parameters are numeric for correlation calculations
         for p in tunable_params:
             full_df[p] = pd.to_numeric(full_df[p], errors='coerce')
 
@@ -111,23 +103,21 @@ class BayesianOpt(Experiment):
                 agg_df['dist'] = np.sqrt(agg_df['t_norm']**2 + agg_df['r_norm']**2)
                 knee = agg_df.loc[agg_df['dist'].idxmin()]
 
-                # 4. Extract optimal parameters from individual columns
                 best_trial_data = df_sub[df_sub['trial'] == knee['trial']].iloc[0]
 
                 # FIX: Convert the slice to a dictionary to ensure native Python types for JSON
                 best_p_dict = best_trial_data[tunable_params].to_dict()
 
-                best_p_str = json.dumps(best_p_dict) # This will now work without the int64 error
+                best_p_str = json.dumps(best_p_dict)
 
-                self.console.print(f"\n[bold magenta]Optimization Results:[/] {algo} on {ds}")
-                self.console.print(Panel(
+                self.logger.print(f"\n[bold magenta]Optimization Results:[/] {algo} on {ds}")
+                self.logger.print(Panel(
                     f"[bold green]Best Trade-off (Trial {int(knee['trial'])})[/]\n"
                     f"Time: {knee['time']:.3f}s | Ratio: {knee['ratio']:.5f}\n"
                     f"Params: {best_p_str}",
                     border_style="green"
                 ))
 
-                # 2. Print Parameter Impact Table (Pearson Correlation)
                 tunable_params = [p for p in PARAM_CONFIG.keys() if p in df_sub.columns]
                 if tunable_params:
                     corr_table = Table(
@@ -151,11 +141,12 @@ class BayesianOpt(Experiment):
 
                             corr_table.add_row(p, t_fmt, r_fmt)
 
-                    self.console.print(corr_table)
+                    self.logger.print(corr_table)
 
 
 def main():
-    BayesianOpt().run()
+    with BayesianOpt() as exp:
+        exp.run()
 
 if __name__ == "__main__":
     main()
