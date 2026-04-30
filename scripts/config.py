@@ -1,9 +1,7 @@
 import os
 
-# --- PATHS ---
 OUTPUT_DIR = "output"
-EXTERNAL_DIR = "external"
-BASELINE_DIR = os.path.join(EXTERNAL_DIR, "kdd20-mosso")
+VERSIONS_DIR = os.path.join(OUTPUT_DIR, "versions")
 DATASETS_DIR = "datasets"
 
 BENCHMARK_DIR = os.path.join(OUTPUT_DIR, "benchmark")
@@ -15,6 +13,39 @@ LOG_DIR = os.path.join(OUTPUT_DIR, "logs")
 JAR_ORIGINAL = "mosso-original.jar"
 JAR_HYBRID = "mosso-hybrid.jar"
 ORIGINAL_REPO_URL = "https://github.com/jihoonko/kdd20-mosso"
+BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
+
+ALGORITHMS = {
+    "local": {
+        "template": ["escape", "samples", "interval"]
+    },
+    "kdd20-mosso": {
+        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
+        "branch": "master",
+        "params" : {"samples": 120, "escape": 3},
+        "template": ["escape", "samples", "interval"]
+    },
+    "strat_1": {
+        "repo": BASE_REPO_URL,
+        "branch": "feature/merging_strategy_1",
+        "template": ["escape", "samples", "interval", "b"]
+    },
+    "strat_2": {
+        "repo": BASE_REPO_URL,
+        "branch": "feature/merging_strategy_2",
+        "template": ["escape", "samples", "interval", "b"]
+    },
+    "strat_1_2": {
+        "repo": BASE_REPO_URL,
+        "branch": "feature/merging_strategy_1_2",
+        "template": ["escape", "samples", "interval", "b"]
+    },
+    "divide_strategy": {
+        "repo": BASE_REPO_URL,
+        "branch": "mags_strat/divide_strategy",
+        "template": ["escape", "samples", "interval"]
+    },
+}
 
 DATASETS = {
     "small": [
