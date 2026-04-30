@@ -15,8 +15,6 @@ def write_results_bulk(conn: sqlite3.Connection, df: pd.DataFrame) -> None:
 
 def read_results(conn: sqlite3.Connection) -> pd.DataFrame:
     df = pd.read_sql("SELECT * FROM results", conn)
-    #params_df = pd.json_normalize(df['parameters'].apply(json.loads))
-    #df = pd.concat([df.drop('parameters', axis=1), params_df], axis=1)
     return df
 
 def write_metadata(conn: sqlite3.Connection, manifest: dict) -> None:

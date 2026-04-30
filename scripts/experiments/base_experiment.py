@@ -1,3 +1,4 @@
+import sys
 import random
 import argparse
 from abc import ABC, abstractmethod
@@ -9,15 +10,14 @@ import time
 
 import numpy as np
 import pandas as pd
-from rich.console import Console
 from rich.table import Table
 from rich import box
 
 from scripts.config import PARAM_CONFIG, ALGORITHMS, DATASETS, EXPERIMENT_DIR, DATASET_GROUP
 from scripts.utils import (
-    setup_logging, setup_directories, get_datasets_to_run,
+    setup_directories, get_datasets_to_run,
     get_repo_info, get_env_info,
-    get_confidence_interval
+    get_confidence_interval, Logger
 )
 from scripts.datasets import download_dataset
 from scripts.runners.base_runner import get_runner
@@ -39,15 +39,26 @@ class Experiment(ABC):
         self.session_dir.mkdir(parents=True, exist_ok=True)
 
         log_file = self.session_dir / "execution.log"
-        self.logger = setup_logging(str(log_file))
-        self.console = Console(highlight=False)
+        self.logger = Logger(str(log_file))
         self.db_conn = None
+
+    def __enter__(self):
+        self.db_conn = db.init_db(self.session_dir)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.db_conn:
+            self.db_conn.close()
 
     def add_custom_args(self, parser: argparse.ArgumentParser) -> None:
         return
 
     @abstractmethod
     def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+        pass
+
+    @abstractmethod
+    def output(self, df: pd.DataFrame):
         pass
 
     def run(self) -> None:
@@ -64,26 +75,25 @@ class Experiment(ABC):
             exit(1)
 
         elapsed = time.time() - start_time
-        self.console.print(f"[dim]Total Benchmark Time:[/dim] {elapsed:.2f} seconds")
-        self.console.print(f"[dim]Output:[/dim] {self.session_dir}")
-
-        if self.db_conn:
-            self.db_conn.close()
+        self.logger.print(f"[dim]Total Benchmark Time:[/dim] {elapsed:.2f} seconds")
+        self.logger.print(f"[dim]Output:[/dim] {self.session_dir}")
 
     def _run_setup(self):
-        self.console.rule("[bold]Setup[/bold]")
+        self.logger.rule("[bold]Setup[/bold]")
+
+        command_str = " ".join(sys.argv)
+        self.logger.print(f"[bold dim]Command:[/bold dim] [dim]{command_str}[/dim]\n")
 
         self.datasets_to_run = get_datasets_to_run(self.args)
 
         setup_directories()
 
-        self.db_conn = db.init_db(self.session_dir)
         self.write_metadata()
         self.print_parameters()
         self._build_algorithms()
 
     def _process_datasets(self) -> None:
-        self.console.rule("[bold]Processing[/bold]")
+        self.logger.rule("[bold]Processing[/bold]")
         n = len(self.datasets_to_run)
         for i, ds in enumerate(self.datasets_to_run, 1):
             url = ds.get("url", "None")
@@ -94,7 +104,7 @@ class Experiment(ABC):
             if not dataset_path:
                 raise RuntimeError(f"Failed to download dataset {filename}.")
 
-            self.console.print(
+            self.logger.print(
                 f"[bold cyan][{i}/{n}][/bold cyan] {short_name} ({self.args.runs} run{'s' if self.args.runs != 1 else ''})")
 
             metrics = self.process(dataset_path, short_name)
@@ -109,43 +119,32 @@ class Experiment(ABC):
             self.logger.warning("[!] No results generated")
             return
 
-        if self.db_conn and self.results:
-            raw_df = pd.DataFrame(self.results)
-            raw_df.columns = raw_df.columns.str.lower()
-            db.write_results_bulk(self.db_conn, raw_df)
+        results_df = pd.DataFrame(self.results)
 
-        self.print_result()
-        self.output()
+        if self.db_conn:
+            db.write_results_bulk(self.db_conn, results_df)
 
-    def print_result(self):
-        self.console.rule("[bold]Results[/bold]")
-        if not self.db_conn:
-            self.logger.warning("No database connection. Skipping table generation.")
-            return
+        self.print_result(results_df)
+        self.output(results_df)
 
-        raw_df = db.read_results(self.db_conn)
-        if raw_df.empty:
-            return
+    def print_result(self, df: pd.DataFrame):
+        self.logger.rule("[bold]Results[/bold]")
 
-        raw_display_df = raw_df.copy()
+        display_df = df.copy()
 
-        float_cols = raw_display_df.select_dtypes(include=['float', 'float32', 'float64']).columns
+        float_cols = display_df.select_dtypes(include=['float', 'float32', 'float64']).columns
         for col in float_cols:
-            raw_display_df[col] = raw_display_df[col].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+            display_df[col] = display_df[col].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
 
         raw_table = Table(title="All Results", box=box.SIMPLE, show_header=True, header_style="bold cyan")
-        for col in raw_display_df.columns:
+        for col in display_df.columns:
             raw_table.add_column(str(col).capitalize())
 
-        for _, row in raw_display_df.iterrows():
+        for _, row in display_df.iterrows():
             raw_table.add_row(*[str(val) if pd.notna(val) else "" for val in row])
 
-        self.console.print(raw_table)
-        self.console.print()
-
-    @abstractmethod
-    def output(self):
-        pass
+        self.logger.print(raw_table)
+        self.logger.print()
 
     def _resolve_algo_params(self, algo_config: dict) -> dict[str, str]:
         cmd: dict[str, str] = {}
@@ -169,7 +168,7 @@ class Experiment(ABC):
             self.logger.warning(f"[!] Binary not found for {algo_name}. Skipping.")
             return None
 
-        with self.console.status(f"[bold blue]Running {algo_name} | params: {params} [/bold blue]"):
+        with self.logger.status(f"[bold blue]Running {algo_name} | params: {params} [/bold blue]"):
             t_avg, r_avg, t_list, r_list = runner.run_multiple(
                 dataset_path=dataset_path,
                 base_output_name=f"{algo_name}_{dataset_short_name}_{self.timestamp}",
@@ -243,21 +242,21 @@ class Experiment(ABC):
         self.logger.debug("Metadata successfully written to db")
 
     def _build_algorithms(self) -> None:
-        self.console.rule("[bold]Building[/bold]")
+        self.logger.rule("[bold]Building[/bold]")
         for algo_name, config in self.active_algos.items():
             try:
                 runner = get_runner(algo_name, self.logger, str(self.session_dir))
                 self.logger.debug(f"[bold blue]Building {algo_name} {config}[/bold blue]")
 
-                with self.console.status(f"[bold blue] Building {algo_name} "
+                with self.logger.status(f"[bold blue] Building {algo_name} "
                                          f"| repo :{config.get('repo', '')} "
                                          f"| branch: {config.get('branch', '')} [/bold blue]"):
                     runner.build()
-                self.console.print(f"[green]✓[/green] {algo_name} "
+                self.logger.print(f"[green]✓[/green] {algo_name} "
                                    f"| repo: {config.get('repo', '')} "
                                    f"| branch: {config.get('branch', '')} ")
             except Exception as e:
-                self.console.print(f"[red]✗[/red] {algo_name} ({e})")
+                self.logger.print(f"[red]✗[/red] {algo_name} ({e})")
                 raise
 
     def _parse_arguments(self) -> argparse.Namespace:
@@ -305,17 +304,17 @@ class Experiment(ABC):
             if k not in PARAM_CONFIG:
                 display_v = ", ".join(map(str, v)) if isinstance(v, list) else str(v) if v is not None else ""
                 gen_table.add_row(k, display_v)
-        self.console.print("[bold]Parameters[/bold]")
-        self.console.print(gen_table)
+        self.logger.print("[bold]Parameters[/bold]")
+        self.logger.print(gen_table)
 
         # Hyperparameters per algorithm
         for algo_name, algo_config in self.active_algos.items():
             template = algo_config.get('template', [])
             params = algo_config.get('params', {})
 
-            self.console.print(f"[bold]Hyperparameters:[/bold] {algo_name}")
+            self.logger.print(f"[bold]Hyperparameters:[/bold] {algo_name}")
             if not template:
-                self.console.print("  (none required)\n")
+                self.logger.print("  (none required)\n")
                 continue
 
             hp_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
@@ -341,10 +340,10 @@ class Experiment(ABC):
                 else:
                     base_val = getattr(self.args, p_key, "N/A")
                     hp_table.add_row(p_key, str(base_val), "DYNAMIC")
-            self.console.print(hp_table)
+            self.logger.print(hp_table)
 
         # Datasets
-        self.console.print(f"[bold]Datasets[/bold] ({len(self.datasets_to_run)})")
+        self.logger.print(f"[bold]Datasets[/bold] ({len(self.datasets_to_run)})")
         ds_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
         ds_table.add_column("ID")
         ds_table.add_column("Dataset")
@@ -366,4 +365,4 @@ class Experiment(ABC):
                 disp_nodes, disp_edges,
                 str(meta.get("avg_degree", "N/A")),
             )
-        self.console.print(ds_table)
+        self.logger.print(ds_table)

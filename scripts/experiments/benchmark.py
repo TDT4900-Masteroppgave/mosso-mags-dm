@@ -1,11 +1,7 @@
-import json
-
 import pandas as pd
 from rich import box
 from rich.table import Table
-from rich.console import Console
 
-from scripts import db
 from scripts.experiments.base_experiment import Experiment
 
 
@@ -14,7 +10,7 @@ class Benchmark(Experiment):
         super().__init__("benchmark")
 
         if self.args.baseline and self.args.baseline not in self.args.algorithm:
-            self.console.print(f"[bold red]Error: Baseline '{self.args.baseline}' must be included in algorithms list: {self.args.algorithm}[/]")
+            self.logger.print(f"[bold red]Error: Baseline '{self.args.baseline}' must be included in algorithms list: {self.args.algorithm}[/]")
 
     def add_custom_args(self, parser):
         parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
@@ -43,18 +39,10 @@ class Benchmark(Experiment):
 
         return metrics
 
-    def output(self):
-        if not self.db_conn:
-            self.logger.warning("No database connection. Skipping table generation.")
-            return
-
-        raw_df = db.read_results(self.db_conn)
-        if raw_df.empty:
-            return
-
+    def output(self, df: pd.DataFrame):
         baseline_algo = getattr(self.args, 'baseline', None)
 
-        global_avg_df = raw_df.groupby('algorithm', as_index=False)[['time', 'ratio']].mean()
+        global_avg_df = df.groupby('algorithm', as_index=False)[['time', 'ratio']].mean()
 
         global_baselines = {}
         if baseline_algo and baseline_algo in global_avg_df['algorithm'].values:
@@ -86,19 +74,12 @@ class Benchmark(Experiment):
         for _, row in global_summary_df.iterrows():
             avg_table.add_row(*row.astype(str).tolist())
 
-        self.console.print(avg_table)
-
-        text_console = Console(width=250, color_system=None)
-        with text_console.capture() as capture:
-            text_console.print(avg_table)
-
-        for line in capture.get().splitlines():
-            if line.strip():
-                self.logger.debug(line)
+        self.logger.print(avg_table)
 
 
 def main():
-    Benchmark().run()
+    with Benchmark() as exp:
+        exp.run()
 
 
 if __name__ == "__main__":

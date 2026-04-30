@@ -1,42 +1,106 @@
 """Benchmark utilities: logging, environment info, filesystem helpers, dataframe formatting."""
 import glob
-import logging
 import os
 import platform
 import subprocess
-import sys
 from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from rich.errors import MarkupError
 
 from scripts.config import EXPERIMENT_DIR, DATASETS, DATASETS_DIR, OUTPUT_DIR, ALGORITHMS_DIR, DATASET_GROUP
 
+from rich.console import Console
+from rich.text import Text
+import logging
+import sys
+import psutil
 
-def setup_logging(log_file_path: str):
+def setup_logging(log_file_path: str) -> logging.Logger:
+    """Sets up a file-ONLY logger. Rich handles the terminal natively."""
     logger = logging.getLogger("Benchmark")
     logger.setLevel(logging.DEBUG)
-    logger.handlers = []
 
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(logging.Formatter("%(message)s"))
+    # Clear any existing handlers to completely prevent double-printing
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
     fh = logging.FileHandler(log_file_path)
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 
-    logger.addHandler(ch)
     logger.addHandler(fh)
     return logger
 
 
+class Logger:
+    def __init__(self, log_file_path: str):
+        self.console = Console(highlight=False)
+        self.text_console = Console(color_system=None, width=250)
+        self.logger = setup_logging(log_file_path)
+
+    @staticmethod
+    def _clean(msg: str) -> str:
+        """Strips rich markup tags (like [bold red]) for clean log files."""
+        try:
+            return Text.from_markup(str(msg)).plain
+        except MarkupError:
+            return str(msg)
+
+    # --- Standard Print & UI Methods ---
+    def print(self, *args, **kwargs):
+        self.console.print(*args, **kwargs)
+        with self.text_console.capture() as cap:
+            self.text_console.print(*args, **kwargs)
+        for line in cap.get().splitlines():
+            if line.strip():
+                self.logger.info(line)
+
+    def rule(self, *args, **kwargs):
+        self.console.rule(*args, **kwargs)
+        with self.text_console.capture() as cap:
+            self.text_console.rule(*args, **kwargs)
+        for line in cap.get().splitlines():
+            if line.strip():
+                self.logger.info(line)
+
+    def status(self, *args, **kwargs):
+        if args:
+            with self.text_console.capture() as cap:
+                self.text_console.print(f"Starting: {args[0]}")
+            for line in cap.get().splitlines():
+                if line.strip():
+                    self.logger.info(line.strip())
+        return self.console.status(*args, **kwargs)
+
+    # --- Standard Logging Equivalents ---
+    def debug(self, msg: str):
+        """Debug goes ONLY to the log file, keeping the terminal clean."""
+        self.logger.debug(self._clean(msg))
+
+    def info(self, msg: str):
+        """Info prints to the terminal normally, and logs to the file cleanly."""
+        self.logger.info(self._clean(msg))
+        self.console.print(msg)
+
+    def warning(self, msg: str):
+        """Warnings get automatic yellow formatting in the terminal, plain in file."""
+        self.logger.warning(self._clean(msg))
+        self.console.print(f"[bold yellow]{msg}[/bold yellow]")
+
+    def error(self, msg: str):
+        """Errors get automatic red formatting in the terminal, plain in file."""
+        self.logger.error(self._clean(msg))
+        self.console.print(f"[bold red]{msg}[/bold red]")
+
+
 def get_repo_info(path: str = ".") -> dict:
-    """Git commit SHA, branch, and dirty-flag for repo at path."""
+    """Git commit SHA, branch, and dirty-flag for repo at the path."""
     def _run(cmd):
         try:
             return subprocess.check_output(cmd, cwd=path, stderr=subprocess.DEVNULL, text=True).strip()
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             return "unavailable"
 
     return {
@@ -50,14 +114,13 @@ def _cmd_version(cmd: list[str]) -> str:
     try:
         out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
         return out.strip().splitlines()[0]
-    except Exception:
+    except (subprocess.SubprocessError, OSError, IndexError):
         return "unavailable"
 
 
 def get_env_info() -> dict:
     """Collect host environment metadata for reproducibility."""
     try:
-        import psutil
         ram_gb = round(psutil.virtual_memory().total / 1024 ** 3, 1)
     except ImportError:
         ram_gb = "unavailable"

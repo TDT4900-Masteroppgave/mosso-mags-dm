@@ -1,6 +1,10 @@
-import json
+import pandas as pd
+
 from scripts.config import PARAM_CONFIG
 from scripts.experiments.base_experiment import Experiment
+
+from rich.table import Table
+from rich import box
 
 class ParameterSweep(Experiment):
     def __init__(self):
@@ -49,22 +53,11 @@ class ParameterSweep(Experiment):
                     })
         return metrics
 
-    def output(self):
-        if not self.db_conn:
-            return
-
-        import pandas as pd
-        from rich.table import Table
-        from rich import box
-        from scripts import db
-
-        raw_df = db.read_results(self.db_conn)
-        if raw_df.empty:
-            return
-
+    def output(self, df: pd.DataFrame):
         param_name = self.args.param
+
         # We group by the explicit 'param' column we just created
-        summary_df = raw_df.groupby(['dataset', 'algorithm', 'param'], as_index=False)[['time', 'ratio']].mean()
+        summary_df = df.groupby(['dataset', 'algorithm', 'param'], as_index=False)[['time', 'ratio']].mean()
 
         table = Table(title=f"Parameter Sweep Summary: {param_name.upper()}", box=box.SIMPLE, show_header=True, header_style="bold yellow")
         table.add_column("Dataset", style="cyan")
@@ -82,10 +75,11 @@ class ParameterSweep(Experiment):
                 f"{row['ratio']:.5f}"
             )
 
-        self.console.print(table)
+        self.logger.print(table)
 
 def main():
-    ParameterSweep().run()
+    with ParameterSweep() as exp:
+        exp.run()
 
 
 if __name__ == "__main__":

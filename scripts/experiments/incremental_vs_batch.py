@@ -1,12 +1,9 @@
-import json
-
 from scripts.config import DATASETS, ALGORITHMS
 from scripts.experiments.base_experiment import Experiment
 
 import pandas as pd
 from rich.table import Table
 from rich import box
-from scripts import db
 
 
 class IncrementalVsBatch(Experiment):
@@ -53,16 +50,8 @@ class IncrementalVsBatch(Experiment):
 
         return metrics
 
-    def output(self):
-        if not self.db_conn:
-            return
-
-        raw_df = db.read_results(self.db_conn)
-        if raw_df.empty:
-            return
-
-        # Use the new pre-calculated column
-        summary_df = raw_df.groupby(['dataset', 'algorithm'], as_index=False)[['time_micros']].mean()
+    def output(self, df: pd.DataFrame):
+        summary_df = df.groupby(['dataset', 'algorithm'], as_index=False)[['time_micros']].mean()
 
         table = Table(title="Incremental vs Batch Execution Time", box=box.SIMPLE, show_header=True, header_style="bold yellow")
         table.add_column("Dataset", style="cyan")
@@ -79,10 +68,11 @@ class IncrementalVsBatch(Experiment):
                 t_val
             )
 
-        self.console.print(table)
+        self.logger.print(table)
 
 def main():
-    IncrementalVsBatch().run()
+    with IncrementalVsBatch() as exp:
+        exp.run()
 
 
 if __name__ == "__main__":
