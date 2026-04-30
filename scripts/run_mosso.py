@@ -5,14 +5,16 @@ import shutil
 from config import RUNS_DIR, SUMMARIZED_DIR
 from utils import get_fastutil_path
 
-def run_mosso(jar_file, dataset_path, output_name, samples, escape, interval, discard_summaries, logger, b_candidates=None):
+def run_mosso(jar_file, dataset_path, output_name, discard_summaries, logger, parameters, template):
     classpath = f"{get_fastutil_path()}{os.pathsep}{jar_file}"
     out_file = os.path.join(RUNS_DIR, output_name)
     log_file = f"{out_file}.log"
 
-    cmd = ["java", "-cp", classpath, "mosso.Run", dataset_path, output_name, "mosso", str(escape), str(samples), str(interval)]
-    if b_candidates is not None:
-        cmd.append(str(b_candidates))
+    # Base Java command
+    cmd = ["java", "-cp", classpath, "mosso.Run", dataset_path, output_name, "mosso"]
+
+    for param_key in template:
+        cmd.append(str(parameters[param_key]))
 
     logger.debug(f"Executing: {' '.join(cmd)}")
 
@@ -50,11 +52,11 @@ def run_mosso(jar_file, dataset_path, output_name, samples, escape, interval, di
         logger.error(f"Execution failed for {output_name}: {e}")
         return None, None
 
-def run_multiple_mosso(jar_file, dataset_path, output_name, samples, escape, interval, runs, discard_summaries, logger, b_candidates=None):
+def run_multiple_mosso(jar_file, dataset_path, output_name, runs, discard_summaries, logger, parameters, template):
     times, ratios = [], []
     for i in range(runs):
         logger.debug(f"Iter {i+1}/{runs} for {output_name}...")
-        t, r = run_mosso(jar_file, dataset_path, f"{output_name}_run{i+1}", samples, escape, interval, discard_summaries, logger, b_candidates)
+        t, r = run_mosso(jar_file, dataset_path, f"{output_name}_run{i+1}", discard_summaries, logger, parameters, template)
         if t is not None and r is not None:
             times.append(t)
             ratios.append(r)
