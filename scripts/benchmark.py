@@ -32,7 +32,8 @@ def run_suite(args, datasets_to_run, logger, timestamp):
                 "escape": params.get('escape', args.escape),
                 "b": params.get('b', args.b),
                 "interval": params.get('interval', args.interval),
-                "thr": params.get('thr', args.thr)
+                "h": params.get('h', args.h),
+                "thr_end": params.get('thr_end', args.thr_end)
             }
 
             t_avg, r_avg, t_list, r_list = run_multiple_mosso(

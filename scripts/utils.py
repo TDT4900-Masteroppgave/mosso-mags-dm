@@ -204,7 +204,8 @@ def parse_and_filter_args(script_type="benchmark"):
     parser.add_argument("--algos", nargs='+', help="Specific algorithms to run (e.g. local baseline strat_1)")
     parser.add_argument("--keep-summaries", action="store_true")
     parser.add_argument("--baseline", type=str, help="Algorithm to use as baseline for relative comparisons")
-    parser.add_argument("--thr", type=float, help="Similarity threshold for trying to move a node")
+    parser.add_argument("--h", type=int, help="Number of hash functions")
+    parser.add_argument("--thr_end", type=float, help="Similarity threshold for trying to move a node")
 
     if script_type == "sweep":
         parser.add_argument("--param", choices=list(SWEEP_CONFIG.keys()), required=True)
