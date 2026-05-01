@@ -77,7 +77,7 @@ ALGORITHMS = {
     },
     "ds_sm_thr": {
         "repo": BASE_REPO_URL,
-        "branch": "mags_strat/divide_strategy_similary_measure_thr",
+        "branch": "mags_strat/divide_strategy_similarity_measure_thr",
         "type": "mosso",
         "template": ["e", "c", "interval", "h", "thr_start", "thr_end", "T"],
         "binary_file": "mosso.jar",
@@ -209,9 +209,9 @@ DATASETS = {
 
 DATASET_GROUP = {
     "small": [
-        "CA", "EN", "BK", "EA", "SL", "DB"
+        "CA", "EN", "BK", "EA", "SL",
     ],
     "large": [
-        "AM", "YT", "SK", "LJ"
+        "DB", "AM", "YT", "SK", "LJ"
     ]
 }

@@ -30,6 +30,47 @@ cd mosso-mags-dm
 pip install -r requirements.txt
 ```
 
+## Overview of Strategies
+
+| Name | Branch | Origin | Parameters | Description | Implemented |
+|---|---|---|---|---|---|
+| `kdd20-mosso` | main | mosso | e, c, interval | Original MoSSo | :white_check_mark: |
+| `cp_mosso_simple` | mosso_strat/cp_mosso_simple | mosso | e, c, interval | Uses MoSSo Simple's candidate pool i.e. candidate pool as neighbors to u | :white_check_mark: |
+| `tp_mosso_simple` | mosso_strat/tp_mosso_simple | mosso | e, c, interval | Uses MoSSo Simple's testing pool i.e. a sample of c nodes for the neighbors to u | :x: |
+| `sm` | mags_strat/similarity_measure | mags | e, c, interval, h | Uses multiple MinHash to find the most similar candidate to the testing node. The testing node is proposed moved into this candidate instead of a random node from the candidate pool, as in MoSSo | :white_check_mark: |
+| `sm_top_b` | mags_strat/similarity_measure_top_b | mags | e, c, interval, h, b | Uses multiple MinHash to find the b most similar candidate to the testing node. The exact delta cost is computed for all these candidates and testing node is proposed moved into the candidate that gives the greatest improvement in representation cost | :white_check_mark: |
+| `sm_thr` | mags_strat/similarity_measure_thr | mags | e, c, interval, h, thr_end | Uses multiple MinHash to find the most similar candidate to the testing node. The testing node is proposed moved into this candidate. The threshold is used to only accept candidates with a similarity that exceeds this | :white_check_mark: |
+| `ds` | mags_strat/divide_strategy | mags | e, c, interval | Iterates over the coarse clusters instead of the testing nodes | :white_check_mark: |
+| `ds_thr` | mags_strat/divide_strategy_thr | mags | e, c, interval, thr_start, thr_end, T | Uses iterations and a decreasing threshold that decreases for each iteration. Each iteration iterates over the coarse clusters. The candidate is selected at random, thereafter are the similarity value between this random candidate and the testing node computed. The move is proposed if the similarity exceeds the current threshold | :white_check_mark: |
+| `ds_sm_thr` | mags_strat/divide_strategy_similarity_measure_thr | mags | e, c, interval, h, thr_start, thr_end, T | Uses iterations and a decreasing threshold that decreases for each iteration. Each iteration iterates over the coarse clusters. The most similar candidate is selected and its similarity value are check agians the current threshold. The move is proposed if the similarity exceeds the current threshold | :white_check_mark: |
+| `cap` | mags_strat/cap | mags | e, c, interval, cap | Includes a maximum size to the coarse clusters. If the coarse cluster is greater than a defined maximum size, then it is splitted into smaller clusters | :white_check_mark: |
+| `sm_top_b_thr` | mags_strat/similarity_measure_top_b_thr | mags | e, c, interval | Uses multiple MinHash to find the b most similar candidate to the testing node. The exact delta cost is computed for all these candidates and testing node is proposed moved into the candidate that gives the greatest improvement in representation cost if the delta cost exceeds the threshold| :x: |
+| `saving` | mags_strat/saving_func | mags | e, c, interval | Uses normalized cost to evaluate moves instead of absolute cost | :x: |
+| `fix_testing_nodes` | strat/fix_testing_nodes | authors | e, c, interval | Ensures that only unique nodes exists in the testing nodes | :white_check_mark: |
+| `excl_coarse_clustering` | strat/excl_coarse_clustering | authors | e, c, interval | Original MoSSo, but does not make use of coarse clusters | :x: |
+| `sm_2hop` | strat/similarity_measure_2hop | authors | e, c, interval | Uses multiple MinHash to find the most similar candidate to the testing node. The testing node is proposed moved into this candidate instead of a random node from the candidate pool. Also uses a sample for the 2hop neighborhood | :white_check_mark: |
+| `tp_similar_nbrs` | strat/tp_similar_nbrs | authors | e, c, interval | Constructs the testing pool by selecting the top-k most similar neighbors of the processing node u. Any remaining capacity is filled by duplicating nodes in descending order of similarity | :x: |
+| `random_top_b` | strat/random_top_b | authors | e, c, interval | Selects b nodes at random from the candidate pool. Computes the delta cost to each of these and selects the candidate that gives the greatest improvement in representation cost | :white_check_mark: |
+| `prob_selection_similarity` | strat/prob_selection_similarity | authors | e, c, interval | Selects candidate nodes with probabilities proportional to their similarity i.e. sim(z)/total_sim | :white_check_mark: |
+| `one_processing_src_dst` | strat_deprecated/one_processing_src_dst | authors | e, c, interval |Deprecated. The idea was to process both the src and the dst i the same trial as their affected nodes most likely are very similar | :white_check_mark: |
+| `sm_opt` | strat_deprecated/similarity_measure_optimalization | authors | e, c, interval | Deprecated | :white_check_mark: |
+
+### Parameters
+
+| Name | Description |
+|---|---|
+| `c` | Sample number | 
+| `e` | Probability for corrective escape | 
+| `interval` | Interval | 
+| `b` | Number of top-b candidates | 
+| `h` | Number of hash functions |
+| `thr_start` | Start value for a dynamic decreasing threshold | 
+| `thr_end` | End value for a dynamic decreasing threshold | 
+| `cap` | Maximum size for coarse clusters | 
+| `T` | Number of iterations | 
+
+
+
 ## Benchmark Modes
 
 The framework is driven by the `./run.sh` script, which routes commands to various Python benchmark modules. Use the `--type` flag to select your benchmark mode.
