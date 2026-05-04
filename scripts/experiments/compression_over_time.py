@@ -6,6 +6,7 @@ from pathlib import Path
 from rich.table import Table
 from rich import box
 
+
 def create_partial_dataset(
         dataset_path: str,
         fraction: float,
@@ -13,7 +14,7 @@ def create_partial_dataset(
 ) -> str:
     """Write a file containing the first (fraction * total_edges) unique edges.
 
-    Cached: if the partial file already exists it is returned immediately.
+    Cached: if the partial file already exists, it is returned immediately.
     Writes are atomic to prevent corrupted cache files if interrupted.
     """
     target_edges = int(total_edges * fraction)
@@ -50,7 +51,7 @@ def create_partial_dataset(
                 continue  # skip lines that don't start with two integers
 
             if u == v:
-                continue # self loop
+                continue  # self-loop
 
             # undirected graph, normalize edge
             edge = (min(u, v), max(u, v))
@@ -67,6 +68,7 @@ def create_partial_dataset(
 
     return str(partial_path)
 
+
 class CompressionOverTime(Experiment):
     DEFAULT_CHECKPOINTS = [0.2, 0.4, 0.6, 0.8, 1.0]
 
@@ -80,37 +82,44 @@ class CompressionOverTime(Experiment):
             help="Edge stream fractions to evaluate algorithms at (default: 0.2 0.4 0.6 0.8 1.0)",
         )
 
-    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+    def process(self) -> list[dict]:
         metrics: list[dict] = []
-        checkpoints = getattr(self.args, "checkpoints", self.DEFAULT_CHECKPOINTS)
-        total_edges = DATASETS[dataset_short_name]["meta"]["edges"]
+        for i, ds in enumerate(self.datasets_to_run, 1):
+            short_name, dataset_path = self._get_dataset(ds)
+            self._print_status(i, short_name)
 
-        for checkpoint in checkpoints:
-            self.logger.print(f"[bold yellow]--- Evaluating Checkpoint: {checkpoint * 100:.0f}% ---[/bold yellow]")
+            checkpoints = getattr(self.args, "checkpoints", self.DEFAULT_CHECKPOINTS)
+            total_edges = DATASETS[short_name]["meta"]["edges"]
 
-            partial_dataset_path = create_partial_dataset(dataset_path, checkpoint, total_edges)
-            if not partial_dataset_path:
-                self.logger.error(f"Failed to create partial dataset for {checkpoint}")
-                continue
+            for checkpoint in checkpoints:
+                self.logger.print(f"[bold yellow]--- Evaluating Checkpoint: {checkpoint * 100:.0f}% ---[/bold yellow]")
 
-            for algo_name, algo_config in self.active_algos.items():
-                params = self._resolve_algo_params(algo_config)
+                partial_dataset_path = create_partial_dataset(dataset_path, checkpoint, total_edges)
+                if not partial_dataset_path:
+                    self.logger.error(f"Failed to create partial dataset for {checkpoint}")
+                    continue
 
-                t_avg, r_avg, t_list, r_list = self.execute_runner(
-                    algo_name=algo_name,
-                    dataset_path=partial_dataset_path,
-                    params=params,
-                    dataset_short_name=f"{dataset_short_name}_{checkpoint}",
-                )
+                for algo_name, algo_config in self.active_algos.items():
+                    params = self._resolve_algo_params(algo_config)
 
-                if r_avg is not None:
-                    metrics.append({
-                        "dataset": dataset_short_name,
-                        "algorithm": algo_name,
-                        "change_ratio": checkpoint,
-                        "ratio": r_avg,
-                        **params,
-                    })
+                    t_avg, r_avg, t_list, r_list = self.execute_runner(
+                        algo_name=algo_name,
+                        dataset_path=partial_dataset_path,
+                        params=params,
+                        dataset_short_name=f"{short_name}_{checkpoint}",
+                    )
+
+                    if t_avg is None or r_avg is None:
+                        continue
+
+                    if r_avg is not None:
+                        metrics.append({
+                            "dataset": short_name,
+                            "algorithm": algo_name,
+                            "change_ratio": checkpoint,
+                            "ratio": r_avg,
+                            **params,
+                        })
 
         return metrics
 
@@ -134,9 +143,11 @@ class CompressionOverTime(Experiment):
 
         self.logger.print(table)
 
+
 def main():
     with CompressionOverTime() as exp:
         exp.run()
+
 
 if __name__ == "__main__":
     main()

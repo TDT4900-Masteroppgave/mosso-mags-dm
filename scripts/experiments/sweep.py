@@ -15,42 +15,46 @@ class ParameterSweep(Experiment):
 
     def add_custom_args(self, parser):
         parser.add_argument("--param", choices=list(PARAM_CONFIG.keys()), required=True)
-        parser.add_argument("--range", type=int, nargs=3, required=False) # Changed to False since values can fallback
+        parser.add_argument("--range", type=int, nargs=3, required=False)
         parser.add_argument("--values", type=int, nargs="+", required=False)
 
-    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+    def process(self) -> list[dict]:
         metrics: list[dict] = []
-        for val in self.sweep_values:
-            self.logger.info(f"{self.args.param} = {val}:")
-            for algo_name, algo_config in self.active_algos.items():
-                if self.args.param not in algo_config.get('template', {}):
-                    self.logger.info(f"=> Skipping {algo_name}: No such parameter {self.args.param}")
-                    continue
+        for i, ds in enumerate(self.datasets_to_run, 1):
+            short_name, dataset_path = self._get_dataset(ds)
+            self._print_status(i, short_name)
 
-                params = self._resolve_algo_params(algo_config)
-                params.update({self.args.param: str(val)})
+            for val in self.sweep_values:
+                self.logger.info(f"{self.args.param} = {val}:")
+                for algo_name, algo_config in self.active_algos.items():
+                    if self.args.param not in algo_config.get('template', {}):
+                        self.logger.info(f"=> Skipping {algo_name}: No such parameter {self.args.param}")
+                        continue
 
-                t_avg, r_avg, t_list, r_list = self.execute_runner(
-                    algo_name=algo_name,
-                    dataset_path=dataset_path,
-                    params=params,
-                    dataset_short_name=dataset_short_name,
-                )
+                    params = self._resolve_algo_params(algo_config)
+                    params.update({self.args.param: str(val)})
 
-                if t_list is None or r_list is None:
-                    continue
+                    t_avg, r_avg, t_list, r_list = self.execute_runner(
+                        algo_name=algo_name,
+                        dataset_path=dataset_path,
+                        params=params,
+                        dataset_short_name=short_name,
+                    )
 
-                for i, (t, r) in enumerate(zip(t_list, r_list)):
-                    metrics.append({
-                        "dataset": dataset_short_name,
-                        "algorithm": algo_name,
-                        "run": i + 1,
-                        "time": t,
-                        "ratio": r,
-                        "param_name": self.args.param,
-                        "param": val,
-                        **params,
-                    })
+                    if t_avg is None or r_avg is None:
+                        continue
+
+                    for run, (t, r) in enumerate(zip(t_list, r_list)):
+                        metrics.append({
+                            "dataset": short_name,
+                            "algorithm": algo_name,
+                            "run": run + 1,
+                            "time": t,
+                            "ratio": r,
+                            "param_name": self.args.param,
+                            "param": val,
+                            **params,
+                        })
         return metrics
 
     def output(self, df: pd.DataFrame):

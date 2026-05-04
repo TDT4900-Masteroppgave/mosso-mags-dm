@@ -10,43 +10,44 @@ class IncrementalVsBatch(Experiment):
     def __init__(self):
         super().__init__("ivb")
 
-    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+    def process(self) -> list[dict]:
         metrics: list[dict] = []
+        for i, ds in enumerate(self.datasets_to_run, 1):
+            short_name, dataset_path = self._get_dataset(ds)
+            self._print_status(i, short_name)
 
-        meta = DATASETS.get(dataset_short_name, {}).get("meta", {})
-        total_edges = meta.get("edges", 1)
+            meta = DATASETS.get(short_name, {}).get("meta", {})
+            total_edges = meta.get("edges", 1)
 
-        for algo_name, algo_config in self.active_algos.items():
-            params = self._resolve_algo_params(algo_config)
+            for algo_name, algo_config in self.active_algos.items():
+                params = self._resolve_algo_params(algo_config)
 
-            t_avg, r_avg, t_list, r_list = self.execute_runner(
-                algo_name=algo_name,
-                dataset_path=dataset_path,
-                params=params,
-                dataset_short_name=dataset_short_name,
-            )
+                t_avg, r_avg, t_list, r_list = self.execute_runner(
+                    algo_name=algo_name,
+                    dataset_path=dataset_path,
+                    params=params,
+                    dataset_short_name=short_name,
+                )
 
-            if t_list is None or r_list is None:
-                continue
+                if t_avg is None or r_avg is None:
+                    continue
 
-            for i, (t, r) in enumerate(zip(t_list, r_list)):
-                is_incremental = ALGORITHMS.get(algo_name, {}).get("type", "") == "mosso"
+                for run, (t, r) in enumerate(zip(t_list, r_list)):
+                    is_incremental = ALGORITHMS.get(algo_name, {}).get("type", "") == "mosso"
+                    t_micros = t * 1_000_000
+                    final_t_micros = (t_micros / total_edges) if is_incremental else t_micros
 
-                t_micros = t * 1_000_000
-
-                final_t_micros = (t_micros / total_edges) if is_incremental else t_micros
-
-                metrics.append({
-                    "dataset": dataset_short_name,
-                    "algorithm": algo_name,
-                    "run": i + 1,
-                    # Plot this column for Batch Algorithms
-                    "time": t,
-                    # Plot this column for Streaming Algorithms
-                    "time_micros": final_t_micros,
-                    "ratio": r,
-                    **params,
-                })
+                    metrics.append({
+                        "dataset": short_name,
+                        "algorithm": algo_name,
+                        "run": run + 1,
+                        # Plot this column for Batch Algorithms
+                        "time": t,
+                        # Plot this column for Streaming Algorithms
+                        "time_micros": final_t_micros,
+                        "ratio": r,
+                        **params,
+                    })
 
         return metrics
 

@@ -10,33 +10,40 @@ class Benchmark(Experiment):
         super().__init__("benchmark")
 
         if self.args.baseline and self.args.baseline not in self.args.algorithm:
-            self.logger.print(f"[bold red]Error: Baseline '{self.args.baseline}' must be included in algorithms list: {self.args.algorithm}[/]")
+            self.logger.print(
+                f"[bold red]Error: Baseline '{self.args.baseline}' must be included in algorithms list: {self.args.algorithm}[/]")
 
     def add_custom_args(self, parser):
         parser.add_argument("--baseline", type=str, help="Algorithm for relative comparisons")
 
-    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+    def process(self) -> list[dict]:
         metrics: list[dict] = []
-        for algo_name, algo_config in self.active_algos.items():
-            params = self._resolve_algo_params(algo_config)
+        for i, ds in enumerate(self.datasets_to_run, 1):
+            short_name, dataset_path = self._get_dataset(ds)
+            self._print_status(i, short_name)
 
-            t_avg, r_avg, t_list, r_list = self.execute_runner(
-                algo_name=algo_name,
-                dataset_path=dataset_path,
-                params=params,
-                dataset_short_name=dataset_short_name,
-            )
+            for algo_name, algo_config in self.active_algos.items():
+                params = self._resolve_algo_params(algo_config)
 
-            for i, (t, r) in enumerate(zip(t_list, r_list)):
-                metrics.append({
-                    "dataset": dataset_short_name,
-                    "algorithm": algo_name,
-                    "run": i + 1,
-                    "time": t,
-                    "ratio": r,
-                    **params,
-                })
+                t_avg, r_avg, t_list, r_list = self.execute_runner(
+                    algo_name=algo_name,
+                    dataset_path=dataset_path,
+                    params=params,
+                    dataset_short_name=short_name,
+                )
 
+                if t_avg is None or r_avg is None:
+                    continue
+
+                for run, (t, r) in enumerate(zip(t_list, r_list)):
+                    metrics.append({
+                        "dataset": short_name,
+                        "algorithm": algo_name,
+                        "run": run + 1,
+                        "time": t,
+                        "ratio": r,
+                        **params,
+                    })
         return metrics
 
     def output(self, df: pd.DataFrame):

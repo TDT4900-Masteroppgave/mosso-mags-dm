@@ -54,7 +54,7 @@ class Experiment(ABC):
         return
 
     @abstractmethod
-    def process(self, dataset_path: str, dataset_short_name: str) -> list[dict] | None:
+    def process(self) -> list[dict]:
         pass
 
     @abstractmethod
@@ -67,12 +67,12 @@ class Experiment(ABC):
 
         try:
             self._run_setup()
-            self._process_datasets()
+            self._run_process()
             self._handle_results()
         except Exception as e:
             self.logger.error(f"[!] Benchmark aborted: {e}")
             self.logger.debug(traceback.format_exc())
-            exit(1)
+            return
 
         elapsed = time.time() - start_time
         self.logger.print(f"[dim]Total Benchmark Time:[/dim] {elapsed:.2f} seconds")
@@ -80,7 +80,6 @@ class Experiment(ABC):
 
     def _run_setup(self):
         self.logger.rule("[bold]Setup[/bold]")
-
         command_str = " ".join(sys.argv)
         self.logger.print(f"[bold dim]Command:[/bold dim] [dim]{command_str}[/dim]\n")
 
@@ -92,27 +91,27 @@ class Experiment(ABC):
         self.print_parameters()
         self._build_algorithms()
 
-    def _process_datasets(self) -> None:
+    def _run_process(self):
         self.logger.rule("[bold]Processing[/bold]")
+        metrics = self.process()
+        if metrics is None:
+            self.logger.warning(f"No results generated")
+            return
+        self.results.extend(metrics)
+
+    def _get_dataset(self, ds: pd.DataFrame) -> tuple[str, str]:
+        url = ds.get("url", "None")
+        filename = ds.get("filename", "None")
+        short_name = ds.get("short_name", "N/A")
+        dataset_path = download_dataset(url, filename, self.logger)
+        if not dataset_path:
+            raise RuntimeError(f"Failed to download dataset {filename}.")
+        return short_name, dataset_path
+
+    def _print_status(self, i: int, short_name: str) -> None:
         n = len(self.datasets_to_run)
-        for i, ds in enumerate(self.datasets_to_run, 1):
-            url = ds.get("url", "None")
-            filename = ds.get("filename", "None")
-            short_name = ds.get("short_name", "N/A")
-
-            dataset_path = download_dataset(url, filename, self.logger)
-            if not dataset_path:
-                raise RuntimeError(f"Failed to download dataset {filename}.")
-
-            self.logger.print(
-                f"[bold cyan][{i}/{n}][/bold cyan] {short_name} ({self.args.runs} run{'s' if self.args.runs != 1 else ''})")
-
-            metrics = self.process(dataset_path, short_name)
-            if not metrics:
-                self.logger.warning(f"No results returned for {filename}")
-                continue
-
-            self.results.extend(metrics)
+        self.logger.print(
+            f"[bold cyan][{i}/{n}][/bold cyan] {short_name} ({self.args.runs} run{'s' if self.args.runs != 1 else ''})")
 
     def _handle_results(self) -> None:
         if not self.results:
@@ -249,12 +248,12 @@ class Experiment(ABC):
                 self.logger.debug(f"[bold blue]Building {algo_name} {config}[/bold blue]")
 
                 with self.logger.status(f"[bold blue] Building {algo_name} "
-                                         f"| repo :{config.get('repo', '')} "
-                                         f"| branch: {config.get('branch', '')} [/bold blue]"):
+                                        f"| repo :{config.get('repo', '')} "
+                                        f"| branch: {config.get('branch', '')} [/bold blue]"):
                     runner.build()
                 self.logger.print(f"[green]✓[/green] {algo_name} "
-                                   f"| repo: {config.get('repo', '')} "
-                                   f"| branch: {config.get('branch', '')} ")
+                                  f"| repo: {config.get('repo', '')} "
+                                  f"| branch: {config.get('branch', '')} ")
             except Exception as e:
                 self.logger.print(f"[red]✗[/red] {algo_name} ({e})")
                 raise
