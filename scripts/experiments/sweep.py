@@ -15,7 +15,7 @@ class ParameterSweep(Experiment):
 
     def add_custom_args(self, parser):
         parser.add_argument("--param", choices=list(PARAM_CONFIG.keys()), required=True)
-        parser.add_argument("--range", type=int, nargs=3, required=False) # Changed to False since values can fallback
+        parser.add_argument("--range", type=int, nargs=3, required=False)
         parser.add_argument("--values", type=int, nargs="+", required=False)
 
     def process(self) -> list[dict]:

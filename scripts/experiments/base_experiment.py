@@ -248,12 +248,12 @@ class Experiment(ABC):
                 self.logger.debug(f"[bold blue]Building {algo_name} {config}[/bold blue]")
 
                 with self.logger.status(f"[bold blue] Building {algo_name} "
-                                         f"| repo :{config.get('repo', '')} "
-                                         f"| branch: {config.get('branch', '')} [/bold blue]"):
+                                        f"| repo :{config.get('repo', '')} "
+                                        f"| branch: {config.get('branch', '')} [/bold blue]"):
                     runner.build()
                 self.logger.print(f"[green]✓[/green] {algo_name} "
-                                   f"| repo: {config.get('repo', '')} "
-                                   f"| branch: {config.get('branch', '')} ")
+                                  f"| repo: {config.get('repo', '')} "
+                                  f"| branch: {config.get('branch', '')} ")
             except Exception as e:
                 self.logger.print(f"[red]✗[/red] {algo_name} ({e})")
                 raise

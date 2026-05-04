@@ -6,6 +6,7 @@ from pathlib import Path
 from rich.table import Table
 from rich import box
 
+
 def create_partial_dataset(
         dataset_path: str,
         fraction: float,
@@ -13,7 +14,7 @@ def create_partial_dataset(
 ) -> str:
     """Write a file containing the first (fraction * total_edges) unique edges.
 
-    Cached: if the partial file already exists it is returned immediately.
+    Cached: if the partial file already exists, it is returned immediately.
     Writes are atomic to prevent corrupted cache files if interrupted.
     """
     target_edges = int(total_edges * fraction)
@@ -50,7 +51,7 @@ def create_partial_dataset(
                 continue  # skip lines that don't start with two integers
 
             if u == v:
-                continue # self loop
+                continue  # self-loop
 
             # undirected graph, normalize edge
             edge = (min(u, v), max(u, v))
@@ -66,6 +67,7 @@ def create_partial_dataset(
     tmp_path.rename(partial_path)
 
     return str(partial_path)
+
 
 class CompressionOverTime(Experiment):
     DEFAULT_CHECKPOINTS = [0.2, 0.4, 0.6, 0.8, 1.0]
@@ -141,9 +143,11 @@ class CompressionOverTime(Experiment):
 
         self.logger.print(table)
 
+
 def main():
     with CompressionOverTime() as exp:
         exp.run()
+
 
 if __name__ == "__main__":
     main()

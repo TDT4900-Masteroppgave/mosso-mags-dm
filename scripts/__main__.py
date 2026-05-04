@@ -9,14 +9,12 @@ import importlib
 
 _TYPES = {
     "benchmark": "scripts.experiments.benchmark",
-    "sweep":     "scripts.experiments.sweep",
-    "cot":       "scripts.experiments.compression_over_time",
-    "ivb":       "scripts.experiments.incremental_vs_batch",
-    "bayesian":  "scripts.experiments.bayesian",
-    "analyze":   "scripts.analysis.analyze",
+    "sweep": "scripts.experiments.sweep",
+    "cot": "scripts.experiments.compression_over_time",
+    "ivb": "scripts.experiments.incremental_vs_batch",
+    "bayesian": "scripts.experiments.bayesian",
+    "analyze": "scripts.analysis.analyze",
 }
-
-
 
 
 def main() -> None:
