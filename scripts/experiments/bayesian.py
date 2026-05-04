@@ -18,7 +18,6 @@ class Bayesian(Experiment):
         metrics: list[dict] = []
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-        # Setup SQLite Storage for Optuna
         db_path = self.session_dir / "optuna_study.db"
         storage_url = f"sqlite:///{db_path}"
         self.logger.info(f"[dim]Optuna Dashboard: [bold green]optuna-dashboard {storage_url}[/bold green][/dim]")
@@ -28,10 +27,19 @@ class Bayesian(Experiment):
             study = optuna.create_study(
                 study_name=study_name,
                 storage=storage_url,
-                directions=["minimize"],
+                directions=["minimize", "minimize"],
                 load_if_exists=True,
                 pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=1)
             )
+
+            study.set_user_attr("algorithm_name", algo_name)
+            study.set_user_attr("algorithm_type", algo_config.get("type", "unknown"))
+            study.set_user_attr("git_branch", algo_config.get("branch", "local"))
+            study.set_user_attr("datasets_optimized", [ds['short_name'] for ds in self.datasets_to_run])
+            study.set_user_attr("time_normalization", "seconds_per_edge")
+            study.set_user_attr("objective_1", "Minimized Avg Normalized Time")
+            study.set_user_attr("objective_2", "Minimized Avg Compression Ratio")
+
             self.logger.print(f"[bold cyan]Starting Bayesian Optimization: {algo_name}[/]")
 
             def objective(trial):
@@ -47,11 +55,13 @@ class Bayesian(Experiment):
                             elif val_type == float:
                                 params[param_name] = str(trial.suggest_float(param_name, bounds[0], bounds[1]))
 
+                trial_times = []
                 trial_ratios = []
 
                 for i, ds in enumerate(self.datasets_to_run, 1):
                     short_name, dataset_path = self._get_dataset(ds)
                     self._print_status(i, short_name)
+                    edges = ds.get("meta", {}).get("edges", 1)
 
                     t_avg, r_avg, t_list, r_list = self.execute_runner(
                         algo_name=algo_name,
@@ -62,6 +72,9 @@ class Bayesian(Experiment):
 
                     if t_avg is None or r_avg is None:
                         raise optuna.exceptions.TrialPruned()
+
+                    trial.set_user_attr(f"raw_time_{short_name}", f"{t_avg:.4f}s")
+                    trial.set_user_attr(f"ratio_{short_name}", f"{r_avg:.5f}")
 
                     for run, (t, r) in enumerate(zip(t_list, r_list)):
                         metrics.append({
@@ -74,18 +87,10 @@ class Bayesian(Experiment):
                             **params,
                         })
 
+                    trial_times.append(t_avg / edges)
                     trial_ratios.append(r_avg)
 
-                    # Report ratio to pruner to kill bad compression early
-                    trial.report(r_avg, step=i)
-                    if trial.should_prune():
-                        self.logger.info(
-                            f"[yellow]Trial {trial.number} pruned: Poor compression ratio on {short_name}[/yellow]")
-                        raise optuna.exceptions.TrialPruned()
-
-                joint_ratio = sum(trial_ratios) / len(trial_ratios)
-
-                return joint_ratio
+                return sum(trial_times) / len(trial_times), sum(trial_ratios) / len(trial_ratios)
 
             study.optimize(
                 objective,
