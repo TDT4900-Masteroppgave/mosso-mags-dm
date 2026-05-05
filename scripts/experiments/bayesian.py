@@ -60,7 +60,6 @@ class Bayesian(Experiment):
 
                 for i, ds in enumerate(self.datasets_to_run, 1):
                     short_name, dataset_path = self._get_dataset(ds)
-                    self._print_status(i, short_name)
                     edges = ds.get("meta", {}).get("edges", 1)
 
                     t_avg, r_avg, t_list, r_list = self.execute_runner(

@@ -319,26 +319,12 @@ class Experiment(ABC):
             hp_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
             hp_table.add_column("Param")
             hp_table.add_column("Value", justify="right")
-            hp_table.add_column("State")
+
             for p_key in template:
-                if getattr(self.args, "param", None) == p_key:
-                    if getattr(self.args, "range", None):
-                        r = self.args.range
-                        display_val = f"range({r[0]}, {r[1]}, {r[2]})"
-                    elif getattr(self.args, "values", None):
-                        display_val = f"values{self.args.values}"
-                    else:
-                        display_val = f"bounds{PARAM_CONFIG[p_key].get('bounds')}"
+                # Use value from algo config if present, otherwise fallback to CLI args
+                val = params.get(p_key, getattr(self.args, p_key, "N/A"))
+                hp_table.add_row(p_key, str(val))
 
-                    hp_table.add_row(p_key, display_val, "[yellow]SWEEP[/yellow]")
-
-                elif p_key in params or PARAM_CONFIG[p_key].get("bounds") is None:
-                    fixed_val = params.get(p_key, getattr(self.args, p_key))
-                    hp_table.add_row(p_key, str(fixed_val), "[dim]FIXED[/dim]")
-
-                else:
-                    base_val = getattr(self.args, p_key, "N/A")
-                    hp_table.add_row(p_key, str(base_val), "DYNAMIC")
             self.logger.print(hp_table)
 
         # Datasets
