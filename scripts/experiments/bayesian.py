@@ -49,11 +49,15 @@ class Bayesian(Experiment):
                     if param_name in params:
                         val_type = conf["type"]
                         bounds = conf.get("bounds")
+                        step = conf.get("step")  # Retrieve the step value
+
                         if bounds:
                             if val_type == int:
-                                params[param_name] = str(trial.suggest_int(param_name, bounds[0], bounds[1]))
+                                params[param_name] = str(
+                                    trial.suggest_int(param_name, bounds[0], bounds[1], step=step or 1))
                             elif val_type == float:
-                                params[param_name] = str(trial.suggest_float(param_name, bounds[0], bounds[1]))
+                                params[param_name] = str(
+                                    trial.suggest_float(param_name, bounds[0], bounds[1], step=step))
 
                 trial_times = []
                 trial_ratios = []
