@@ -12,7 +12,7 @@ PARAM_CONFIG = {
     "e": {"description": "escape", "default": 3, "bounds": (1, 5), "step": 1, "type": int},
     "interval": {"description": "interval", "default": 10000, "type": int},
     "b": {"description": "top candidates", "default": 5, "bounds": (1, 10), "step": 1, "type": int},
-    "h": {"description": "hashes", "default": 4, "bounds": (1, 50), "step": 5, "type": int},
+    "h": {"description": "hashes", "default": 4, "bounds": (1, 51), "step": 5, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
     "thr_end": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "step": 0.05, "type": float},
     "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (100, 500), "step": 50,
