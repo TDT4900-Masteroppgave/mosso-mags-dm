@@ -88,12 +88,13 @@ class MagsRunner(AlgorithmRunner):
         build_dir.mkdir(parents=True, exist_ok=True)
         env = _mags_build_env()
 
-        cmake_cmd = [
-            "cmake", "..",
-            "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang",
-            "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++",
-            "-DOpenMP_ROOT=/opt/homebrew/opt/libomp",
-        ]
+        cmake_cmd = ["cmake", "..", "-DCMAKE_BUILD_TYPE=Release"]
+        if platform.system() == "Darwin":
+            cmake_cmd.extend([
+                "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang",
+                "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++",
+                "-DOpenMP_ROOT=/opt/homebrew/opt/libomp",
+            ])
 
         self.run_build(cmake_cmd, cwd=build_dir, env=env)
         self.run_build(["cmake", "--build", "."], cwd=build_dir, env=env)
