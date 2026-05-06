@@ -12,12 +12,13 @@ PARAM_CONFIG = {
     "e": {"description": "escape", "default": 3, "bounds": (1, 5), "step": 1, "type": int},
     "interval": {"description": "interval", "default": 10000, "type": int},
     "b": {"description": "top candidates", "default": 5, "bounds": (1, 10), "step": 1, "type": int},
-    "h": {"description": "hashes", "default": 4, "bounds": (1, 51), "step": 5, "type": int},
+    "h": {"description": "hashes", "default": 4, "bounds": (0, 50), "step": 5, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
     "thr_end": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "step": 0.05, "type": float},
     "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (100, 500), "step": 50,
             "type": int},
     "T": {"description": "iterations over partitions", "default": 1, "bounds": (10, 50), "step": 10, "type": int},
+    "p": {"description": "number of threads", "default": 1, "bounds": (1, 40), "type": int},
 }
 
 ALGORITHMS = {
@@ -90,12 +91,26 @@ ALGORITHMS = {
         "template": [],
         "binary_file": "mags",
     },
-    "mags-dm": {
+    "para_mags": {
+        "repo": "https://github.com/nedchu/mags-release",
+        "branch": "main",
+        "type": "mags",
+        "template": ["p"],
+        "binary_file": "pmags",
+    },
+    "mags_dm": {
         "repo": "https://github.com/nedchu/mags-release",
         "branch": "main",
         "type": "mags",
         "template": [],
         "binary_file": "mags_dm",
+    },
+    "para_mags_dm": {
+        "repo": "https://github.com/nedchu/mags-release",
+        "branch": "main",
+        "type": "mags",
+        "template": ["p"],
+        "binary_file": "pmags_dm",
     },
 }
 

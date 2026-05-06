@@ -37,19 +37,24 @@ def _generate_mags_cmake_lists(target_dir: Path, algo_name: str, algo_config: di
     run_file = f"run/run_{binary_file}.cpp"
     cmake_content = f"""\
 cmake_minimum_required(VERSION 3.10)
-project({algo_name} LANGUAGES CXX)
+project(core-sum)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${{CMAKE_CXX_FLAGS}} -std=c++14 -O3 -fopenmp")
 find_package(OpenMP REQUIRED)
 
-add_executable({binary_file}
-    src/util.cpp src/graph.cpp src/gsum.cpp src/pgsum.cpp {run_file}
-)
+include_directories(./src)
+aux_source_directory(./src INCLUDES)
 
-target_include_directories({binary_file} PRIVATE src src/parallel_hashmap)
-target_link_libraries({binary_file} PRIVATE OpenMP::OpenMP_CXX)
+add_library(INCLUDES_LIB ${{INCLUDES}})
 
-target_compile_options({binary_file} PRIVATE -w -O3)
+add_executable(mags ./run/run_mags.cpp)
+target_link_libraries(mags INCLUDES_LIB)
+add_executable(mags_dm ./run/run_mags_dm.cpp)
+target_link_libraries(mags_dm INCLUDES_LIB)
+add_executable(pmags_dm ./run/run_para_mags_dm.cpp)
+target_link_libraries(pmags_dm INCLUDES_LIB)
+add_executable(pmags ./run/run_para_mags.cpp)
+target_link_libraries(pmags INCLUDES_LIB)
 """
     (target_dir / "CMakeLists.txt").write_text(cmake_content, encoding="utf-8")
 
@@ -68,7 +73,7 @@ class MagsRunner(AlgorithmRunner):
     _READ_REGEX = re.compile(r"read:\s*([\d.]+)\(s\)", re.IGNORECASE)
     _MERGE_REGEX = re.compile(r"merge:\s*([\d.]+)\(s\)", re.IGNORECASE)
     _ENCODING_REGEX = re.compile(r"encoding:\s*([\d.]+)\(s\)", re.IGNORECASE)
-    _RATIO_REGEX = re.compile(r"relative size:\s*\d+/\d+\s*=\s*([\d.]+)", re.IGNORECASE)
+    _RATIO_REGEX = re.compile(r"relative size:\s*\d+/\d+[\s=]+([\d.]+)", re.IGNORECASE)
 
     def get_binary_path(self) -> str:
         binary_file = self.config.get("binary_file", self.algo_name)
@@ -82,8 +87,16 @@ class MagsRunner(AlgorithmRunner):
         build_dir = self.target_dir / "build"
         build_dir.mkdir(parents=True, exist_ok=True)
         env = _mags_build_env()
-        self.run_build(["cmake", "..", "-DCMAKE_BUILD_TYPE=Release"], cwd=build_dir, env=env)
-        self.run_build(["cmake", "--build", ".", "--config", "Release"], cwd=build_dir, env=env)
+
+        cmake_cmd = [
+            "cmake", "..",
+            "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang",
+            "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++",
+            "-DOpenMP_ROOT=/opt/homebrew/opt/libomp",
+        ]
+
+        self.run_build(cmake_cmd, cwd=build_dir, env=env)
+        self.run_build(["cmake", "--build", "."], cwd=build_dir, env=env)
         _move_compiled_binary(build_dir, self.get_binary_path())
 
     def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
@@ -112,4 +125,5 @@ class MagsRunner(AlgorithmRunner):
 
     def build_command(self, dataset_path: str, graph_output_path: str, parameters: list[str]) -> list[str]:
         cmd = [os.path.abspath(self.get_binary_path()), dataset_path]
+        cmd.extend(parameters)
         return cmd
