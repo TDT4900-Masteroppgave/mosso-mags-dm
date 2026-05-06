@@ -1,19 +1,26 @@
+# scripts/analysis/analyzers/sweep_line_analyzer.py
+from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-from scripts.analysis.plotters.plotter import Plotter, register
+from .base_plotter import Plotter, register
 
 @register
 class SweepLinePlotter(Plotter):
-    plot_id = "sweep_line"
+    analyzer_id = "sweep_line"
     description = "Parameter Sensitivity Line Charts (Time & Ratio)"
 
-    def render_figure(self, data: pd.DataFrame, algos: list[str], title_prefix: str, time_label: str, options: dict) -> plt.Figure:
+    def __init__(self):
+        super().__init__()
+        self.generates_plots = True
+
+    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, ts: str, options: dict) -> list[Path]:
         if "param" not in data.columns:
             raise ValueError("Missing 'param' column. Please re-run the Sweep experiment.")
 
-        # Grab the dynamic parameter name we passed from analyze.py
+        time_label = options.get("time_label", "Time (seconds)")
+        title_prefix = context.title()
         param_name = options.get("param_name", "Parameter").upper()
 
         academic_colors = ["#2B2D42", "#8D99AE", "#CCCCCC", "#4A536B", "#111111", "#A8B2C1"]
@@ -46,4 +53,7 @@ class SweepLinePlotter(Plotter):
         fig.suptitle(f"Parameter Sensitivity - {title_prefix}", fontweight="bold", fontsize=16)
         fig.tight_layout()
 
-        return fig
+        out_path = out_dir / f"sweep_line_{context}_{ts}.png"
+        fig.savefig(out_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        return [out_path]

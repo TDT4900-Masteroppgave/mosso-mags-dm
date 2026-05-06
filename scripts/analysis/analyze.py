@@ -11,18 +11,18 @@ from rich.console import Console
 from rich.panel import Panel
 
 from scripts.analysis.plotters import Plotter
-from scripts.analysis.plotters.plotter import get_plotter
+from scripts.analysis.plotters.base_plotter import get_analyzer
 from scripts.analysis.sessions import SessionInfo, load_session, scan_sessions
 from scripts.config import EXPERIMENT_DIR
 
 console = Console(highlight=False)
 
 EXPERIMENT_PLOTS = {
-    "benchmark": ["bar", "scatter"],
+    "benchmark": ["bar_chart"],
     "ivb": ["ivb_bar"],
     "cot": ["cot_line"],
     "sweep": ["sweep_line"],
-    "bo": ["bo_scatter"],
+    "bayesian": ["pareto_front", "bayesian_study", "marginal_utility", "reverse_engineer"]
 }
 
 _STYLE = questionary.Style([
@@ -59,11 +59,17 @@ def _pick_session(sessions: list[SessionInfo]) -> SessionInfo | None:
     def label(s: SessionInfo) -> str:
         algos = ", ".join(s.algorithms) if s.algorithms else "?"
         ds_str = f"[{', '.join(s.datasets)}]" if s.datasets else "[?]"
-        flag = "" if s.has_db else "  [no DB]"
-        return f"{_fmt_ts(s.timestamp)}   algos: {algos}   datasets: {ds_str}{flag}"
+        return f"{_fmt_ts(s.timestamp)}   algos: {algos}   datasets: {ds_str}"
 
-    choices = [Choice(title=label(s), value=s, disabled=None if s.has_db else "no DB")
-               for s in sessions]
+    choices = [
+        Choice(title=label(s), value=s)
+        for s in sessions if s.has_db
+    ]
+
+    if not choices:
+        console.print("[yellow]No analyzable sessions (with databases) found in this category.[/yellow]")
+        return None
+
     return questionary.select(
         "Session:",
         choices=choices,
@@ -156,7 +162,7 @@ def _pick_plot(session_type: str) -> type['Plotter'] | None:
 
     choices = []
     for pid in allowed_plot_ids:
-        plotter_cls = get_plotter(pid)
+        plotter_cls = get_analyzer(pid)
         if plotter_cls:
             choices.append(Choice(title=f"{plotter_cls.description}", value=plotter_cls))
 
@@ -260,17 +266,24 @@ def main() -> None:
         console.print(Panel(summary_text, title="Summary", border_style="cyan"))
 
         out_dir = session.path / "analysis"
-        options = {"datasets": datasets, "aggregate": aggregate, "time_label": time_label, "normalize": normalize}
+
+        options = {
+            "datasets": datasets,
+            "aggregate": aggregate,
+            "time_label": time_label,
+            "normalize": normalize,
+            "db_path": session.path / "optuna_study.db",
+        }
 
         if "param_name" in df.columns:
             options["param_name"] = str(df["param_name"].iloc[0])
 
         try:
-            out_path = plotter_cls().plot(plot_df, meta, algos, out_dir, options)
-            for path in out_path:
+            out_paths = plotter_cls().process(plot_df, meta, algos, out_dir, options)
+            for path in out_paths:
                 console.print(f"[green]✓[/green] Saved: [bold]{path}[/bold]")
         except Exception as e:
-            console.print(f"[red]✗ Plot failed:[/red] {e}\n")
+            console.print(f"[red]✗ Analysis failed:[/red] {e}\n")
 
         if not _confirm("Generate another plot from this session?", default=False):
             break
