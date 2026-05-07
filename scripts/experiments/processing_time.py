@@ -5,9 +5,9 @@ from scripts.config import DATASETS, ALGORITHMS
 from scripts.experiments.base_experiment import Experiment
 
 
-class IncrementalVsBatch(Experiment):
+class ProcessingTime(Experiment):
     def __init__(self):
-        super().__init__("ivb")
+        super().__init__("processing_speed")
 
     def process(self) -> list[dict]:
         metrics = []
@@ -60,7 +60,7 @@ class IncrementalVsBatch(Experiment):
 
 
 def main():
-    with IncrementalVsBatch() as exp:
+    with ProcessingTime() as exp:
         exp.run()
 
 if __name__ == "__main__":

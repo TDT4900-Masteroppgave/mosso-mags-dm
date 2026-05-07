@@ -246,7 +246,7 @@ class Experiment(ABC):
         parser.add_argument("--runs", type=int, default=1)
 
         data_group = parser.add_mutually_exclusive_group()
-        data_group.add_argument("--group", choices=["all"] + list(DATASET_GROUP.keys()), default="all")
+        data_group.add_argument("--group", nargs="+", choices=["all"] + list(DATASET_GROUP.keys()), default=["all"])
         data_group.add_argument("--dataset", nargs='+', choices=list(DATASETS.keys()), type=str)
 
         parser.add_argument("--algorithm", nargs='+')
@@ -281,24 +281,20 @@ class Experiment(ABC):
         ds_table.add_column("Size", justify="right")
         ds_table.add_column("Nodes", justify="right")
         ds_table.add_column("Edges", justify="right")
-        ds_table.add_column("Deleted Edges", justify="right")
 
         for ds in self.datasets_to_run:
             meta = ds.get("meta", {})
             nodes = meta.get("nodes", "N/A")
             edges = meta.get("edges", "N/A")
-            deleted_edges = meta.get("deleted_edges", "N/A")
 
             disp_nodes = f"{nodes:,}" if isinstance(nodes, int) else str(nodes)
             disp_edges = f"{edges:,}" if isinstance(edges, int) else str(edges)
-            disp_deleted_edges = f"{deleted_edges:,}" if isinstance(deleted_edges, int) else str(deleted_edges)
 
             ds_table.add_row(
                 ds.get("short_name", "N/A"),
                 str(meta.get("size", "N/A")),
                 disp_nodes,
                 disp_edges,
-                disp_deleted_edges,
             )
 
         self.logger.print(ds_table)

@@ -133,19 +133,21 @@ def setup_directories() -> None:
 
 
 def get_datasets_to_run(args) -> list[dict]:
-    # Determine the keys to run based on group vs specific dataset
-    keys = args.dataset if getattr(args, "dataset", None) else (
-        list(DATASETS.keys()) if args.group == "all" else DATASET_GROUP.get(args.group, [])
-    )
+    if args.dataset:
+        return [{"short_name": ds, **DATASETS[ds]} for ds in args.dataset]
 
-    datasets = []
-    for key in keys:
-        if key in DATASETS:
-            datasets.append({**DATASETS[key], "short_name": key})
-        else:
-            print(f"[!] Warning: Dataset '{key}' not found.")
+    unique_datasets = {}
 
-    return datasets
+    for group in args.group:
+        if group == "all":
+            return [{"short_name": k, **v} for k, v in DATASETS.items()]
+
+        if group in DATASET_GROUP:
+            for ds_name in DATASET_GROUP[group]:
+                if ds_name not in unique_datasets:
+                    unique_datasets[ds_name] = {"short_name": ds_name, **DATASETS[ds_name]}
+
+    return list(unique_datasets.values())
 
 
 def format_long_dataframe_with_baseline(df: pd.DataFrame, baseline_algo: str | None = None) -> pd.DataFrame:
