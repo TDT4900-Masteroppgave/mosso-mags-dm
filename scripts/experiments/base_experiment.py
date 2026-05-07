@@ -22,8 +22,10 @@ from scripts.utils import (
     get_env_info, get_repo_info, setup_directories
 )
 
+
 class Experiment(ABC):
     def __init__(self, benchmark_type: str):
+        self.datasets_to_run = None
         self.benchmark_type = benchmark_type
         self.results: list[dict[str, Any]] = []
         self.args = self._parse_arguments()
@@ -84,8 +86,9 @@ class Experiment(ABC):
             self.logger.print(f"[dim]Total Benchmark Time:[/dim] {elapsed:.2f} seconds")
             self.logger.print(f"[dim]Output:[/dim] {self.session_dir}")
 
-    def _get_dataset(self, ds: pd.DataFrame) -> tuple[str, str]:
-        path = download_dataset(ds.get("url"), ds.get("filename"), self.logger)
+    @staticmethod
+    def _get_dataset(ds: pd.DataFrame) -> tuple[str, str]:
+        path = download_dataset(ds.get("url"), ds.get("filename"))
         if not path:
             raise RuntimeError(f"Failed to download {ds.get('filename')}.")
         return ds.get("short_name", "N/A"), path
@@ -132,7 +135,8 @@ class Experiment(ABC):
             default_val = PARAM_CONFIG.get(param, {}).get("default")
 
             # Priority: 1. Algo Config -> 2. CLI Args -> 3. Param Defaults
-            params[param] = str(config_val if config_val is not None else (cli_val if cli_val is not None else default_val))
+            params[param] = str(
+                config_val if config_val is not None else (cli_val if cli_val is not None else default_val))
         return params
 
     def execute_runner(self, algo_name: str, dataset_path: str, dataset_short_name: str, params: dict[str, str]):
@@ -143,7 +147,8 @@ class Experiment(ABC):
 
         with self.logger.status(f"[bold blue]Running {algo_name} | params: {params} [/bold blue]"):
             output_name = f"{algo_name}_{dataset_short_name}_{self.timestamp}"
-            res = runner.run_multiple(dataset_path, output_name, self.args.runs, list(params.values()))
+            res = runner.run_multiple(dataset_path, dataset_short_name, output_name, self.args.runs,
+                                      list(params.values()))
 
         t_avg, r_avg, t_list, r_list = res
         if t_avg is None or r_avg is None:
@@ -153,7 +158,8 @@ class Experiment(ABC):
         if len(t_list) > 1:
             t_lo, t_hi = get_confidence_interval(t_list, seed=self.args.seed)
             r_lo, r_hi = get_confidence_interval(r_list, seed=self.args.seed)
-            self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s ± {np.std(t_list):.3f}s CI=[{t_lo:.3f},{t_hi:.3f}] | Ratio: {r_avg:.3f} ± {np.std(r_list):.3f} CI=[{r_lo:.3f},{r_hi:.3f}]")
+            self.logger.info(
+                f"=> {algo_name: <12} Time: {t_avg:.3f}s ± {np.std(t_list):.3f}s CI=[{t_lo:.3f},{t_hi:.3f}] | Ratio: {r_avg:.3f} ± {np.std(r_list):.3f} CI=[{r_lo:.3f},{r_hi:.3f}]")
         else:
             self.logger.info(f"=> {algo_name: <12} Time: {t_avg:.3f}s | Ratio: {r_avg:.5f}")
 

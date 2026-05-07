@@ -21,6 +21,8 @@ PARAM_CONFIG = {
     "p": {"description": "number of threads", "default": 1, "bounds": (1, 40), "type": int},
 }
 
+STREAM_TYPES = ["IO", "FD"]  # Insertion-Only, Fully-Dynamic
+
 ALGORITHMS = {
     "local": {
         "target_dir": ".",
@@ -229,5 +231,17 @@ DATASET_GROUP = {
     ],
     "large": [
         "AM", "YT", "SK", "LJ"
+    ],
+    #"insertion": [
+    #    "CA", "EN", "BK", "EA", "SL", "AM",
+    #],
+    "insertion": [
+        "CA",
+    ],
+    #"dynamic": [
+    #    "DB", "YT", "SK", "LJ"
+    #]
+    "dynamic": [
+        "DB",
     ]
 }
