@@ -14,6 +14,7 @@ _TYPES = {
     "ivb": "scripts.experiments.incremental_vs_batch",
     "bayesian": "scripts.experiments.bayesian",
     "analyze": "scripts.analysis.analyze",
+    "metadata": "scripts.report_dataset",
 }
 
 
