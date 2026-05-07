@@ -10,9 +10,10 @@ import importlib
 _TYPES = {
     "benchmark": "scripts.experiments.benchmark",
     "sweep": "scripts.experiments.sweep",
-    "cot": "scripts.experiments.compression_over_time",
-    "ivb": "scripts.experiments.incremental_vs_batch",
+    "cc": "scripts.experiments.compression_over_time",
+    "speed": "scripts.experiments.incremental_vs_batch",
     "bayesian": "scripts.experiments.bayesian",
+    "scale": "scripts.experiments.scalability",
     "analyze": "scripts.analysis.analyze",
 }
 
