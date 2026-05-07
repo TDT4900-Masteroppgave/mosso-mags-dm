@@ -270,33 +270,46 @@ def prepare_datasets(datasets_to_run, active_algos, logger) -> dict:
                         elif algo_type == "mags":
                             deleted = generate_dynamic_batch_graph(str(temp_clean), str(formatted_path), p_delete=p_del_val)
 
-                    prep_log[short_name][algo_type] = {
+                    # --- NEW LOGGING STRUCTURE ---
+                    if "dataset_metadata" not in prep_log[short_name]:
+                        prep_log[short_name]["dataset_metadata"] = {
+                            "stream_type": stream_type,
+                            "p_delete": p_del_val,
+                            "nodes": num_nodes,
+                            "edges": total_edges,
+                            "avg_degree": avg_deg,
+                            "max_degree": max_deg,
+                            "density": density
+                        }
+
+                    if "algorithms" not in prep_log[short_name]:
+                        prep_log[short_name]["algorithms"] = {}
+
+                    prep_log[short_name]["algorithms"][algo_type] = {
                         "timestamp": datetime.now().isoformat(),
-                        "stream_type": stream_type,
-                        "p_delete": p_del_val,
-                        "nodes": num_nodes,
-                        "edges": total_edges,
-                        "avg_degree": avg_deg,
-                        "max_degree": max_deg,
-                        "density": density,
                         "deleted_edges": deleted,
                         "file_path": str(formatted_path)
                     }
+
                     with open(log_file, "w", encoding="utf-8") as f:
                         json.dump(prep_log, f, indent=4)
 
                 else:
-                    log_entry = prep_log.get(short_name, {}).get(algo_type, {})
-                    num_nodes = log_entry.get("nodes", 0)
-                    total_edges = log_entry.get("edges", 0)
+                    meta_entry = prep_log.get(short_name, {}).get("dataset_metadata", {})
+                    algo_entry = prep_log.get(short_name, {}).get("algorithms", {}).get(algo_type, {})
+                    num_nodes = meta_entry.get("nodes", 0)
+                    total_edges = meta_entry.get("edges", 0)
+                    deleted = algo_entry.get("deleted_edges", 0)
 
                 # Overwrite Config in Memory
                 if "meta" not in ds: ds["meta"] = {}
+                # ... (rest of the code remains the same)
                 if "meta" not in DATASETS.get(short_name, {}): DATASETS[short_name]["meta"] = {}
 
                 for meta_target in [ds["meta"], DATASETS[short_name]["meta"]]:
                     meta_target["nodes"] = num_nodes
                     meta_target["edges"] = total_edges
+                    meta_target["deleted_edges"] = deleted
 
                 prepared_paths[short_name][algo_type] = str(formatted_path)
 

@@ -27,10 +27,10 @@ def create_partial_dataset(dataset_path: str, fraction: float, total_edges: int)
     tmp.rename(partial_path)
     return str(partial_path)
 
-class CompressionOverTime(Experiment):
+class CompressionCheckpoints(Experiment):
     def __init__(self):
         self.fractions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-        super().__init__("compression_over_time")
+        super().__init__("compression_checkpoints")
 
         # New dictionary just for this experiment
         self.checkpoint_datasets = {}
@@ -119,7 +119,7 @@ class CompressionOverTime(Experiment):
         self.logger.print(table)
 
 def main():
-    with CompressionOverTime() as exp:
+    with CompressionCheckpoints() as exp:
         exp.run()
 
 if __name__ == "__main__":
