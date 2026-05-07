@@ -246,7 +246,7 @@ class Experiment(ABC):
         parser.add_argument("--runs", type=int, default=1)
 
         data_group = parser.add_mutually_exclusive_group()
-        data_group.add_argument("--group", choices=["all"] + list(DATASET_GROUP.keys()), default="all")
+        data_group.add_argument("--group", nargs="+", choices=["all"] + list(DATASET_GROUP.keys()), default=["all"])
         data_group.add_argument("--dataset", nargs='+', choices=list(DATASETS.keys()), type=str)
 
         parser.add_argument("--algorithm", nargs='+')
