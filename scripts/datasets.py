@@ -1,6 +1,6 @@
 import gzip
+import random
 import subprocess
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -87,7 +87,7 @@ def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch:
         raise e
 
 
-def download_dataset(url: str, filename: str, logger, retries: int = 3, timeout: int = 60) -> str | None:
+def download_dataset(url: str, filename: str, timeout: int = 60) -> str | None:
     """Download and extract a dataset with retry/timeout on network failures."""
     gz_path = Path(DATASETS_DIR) / f"{filename}.gz"
     txt_path = Path(DATASETS_DIR) / filename
@@ -97,31 +97,55 @@ def download_dataset(url: str, filename: str, logger, retries: int = 3, timeout:
 
     try:
         if not gz_path.exists():
-            logger.info(f"[*] Downloading {filename}")
-
-            for attempt in range(1, retries + 1):
-                try:
-                    with urllib.request.urlopen(url, timeout=timeout) as response, open(gz_path, "wb") as out:
-                        out.write(response.read())
-                    break
-                except (urllib.error.URLError, OSError) as e:
-                    if attempt == retries:
-                        raise RuntimeError(f"Download failed after {retries} attempts: {e}") from e
-
-                    wait = 2 ** attempt
-                    logger.warning(f"[!] Download attempt {attempt}/{retries} failed: {e}. Retrying in {wait}s...")
-                    time.sleep(wait)
-
-        logger.debug(f"Extracting and cleaning {filename}...")
-        with gzip.open(gz_path, "rt") as fin, open(txt_path, "w") as fout:
-            for line in fin:
-                fout.write(line)
+            with urllib.request.urlopen(url, timeout=timeout) as response, open(gz_path, "wb") as out:
+                out.write(response.read())
+        with gzip.open(gz_path, "rt") as f_in, open(txt_path, "w") as f_out:
+            for line in f_in:
+                f_out.write(line)
 
         gz_path.unlink()
         return str(txt_path)
 
     except Exception as e:
-        logger.error(f"[!] Preparing dataset failed for {filename}: {e}")
         if txt_path.exists():
             txt_path.unlink()
-        return None
+        raise e
+
+def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> None:
+    """
+    Generates a Fully Dynamic (FD) stream from a clean edge list.
+    Edges are inserted in random order. With probability p_delete,
+    an edge is deleted at a random time strictly after its insertion.
+    """
+    events = []
+
+    with open(src, "r", encoding="utf-8") as fin:
+        for line in fin:
+            parts = line.split()
+            if len(parts) >= 2:
+                u, v = parts[0], parts[1]
+
+                t_insert = random.random()
+                events.append((t_insert, u, v, "1"))
+
+                if random.random() < p_delete:
+                    t_delete = random.uniform(t_insert, 1.0)
+                    events.append((t_delete, u, v, "-1"))
+
+    events.sort(key=lambda x: x[0])
+
+    with open(dst, "w", encoding="utf-8") as fout:
+        for _, u, v, indicator in events:
+            fout.write(f"{u}\t{v}\t{indicator}\n")
+
+def generate_dynamic_batch_graph(src: str, dst: str, p_delete: float = 0.1) -> None:
+    """
+    Generates the final static state of a fully dynamic stream.
+    Since 10% of edges are deleted during the stream, the final batch
+    graph is simply the remaining 90% of the original edges.
+    """
+    with open(src, "r", encoding="utf-8") as fin, open(dst, "w", encoding="utf-8") as fout:
+        for line in fin:
+            # 90% chance to survive to the end of the stream
+            if random.random() >= p_delete:
+                fout.write(line)
