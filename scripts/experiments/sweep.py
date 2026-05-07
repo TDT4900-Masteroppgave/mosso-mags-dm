@@ -37,7 +37,7 @@ class ParameterSweep(Experiment):
                     params = self._resolve_algo_params(algo_config)
                     params[self.args.param] = str(val)
 
-                    res = self.execute_runner(algo_name, dataset_path, short_name, params)
+                    res = self.execute_runner(algo_name, short_name, params)
                     if res is None:
                         continue
 

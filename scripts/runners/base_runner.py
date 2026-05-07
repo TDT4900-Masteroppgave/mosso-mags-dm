@@ -1,4 +1,3 @@
-import sys
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -7,8 +6,6 @@ from pathlib import Path
 
 from scripts.config import ALGORITHMS, ALGORITHMS_DIR
 from scripts.datasets import retrieve_github_code
-from scripts.datasets import clean_and_write, generate_dynamic_stream_graph, generate_dynamic_batch_graph
-from scripts.config import DATASET_GROUP
 
 
 class AlgorithmRunner(ABC):
@@ -103,54 +100,13 @@ class AlgorithmRunner(ABC):
             self.logger.error(f"[!] Unexpected error for {output_name}: {e}")
         return None, None
 
-    def format_dataset(self, dataset_path: str, short_name: str) -> str:
-        orig = Path(dataset_path)
-
-        # Create algorithm-specific directory
-        save_dir = orig.parent / self.__class__.__name__
-        save_dir.mkdir(exist_ok=True)
-
-        # Determine stream type
-        is_dynamic = "dynamic" in sys.argv and short_name in DATASET_GROUP.get("dynamic", [])
-        stream_type = "FD" if is_dynamic else "IO"
-
-        # Safe filename combining class name, dataset, and stream type
-        formatted_path = save_dir / f"{self.__class__.__name__}_{orig.stem}_{stream_type}.txt"
-
-        if not formatted_path.exists():
-            self.logger.debug(f"Formatting dataset for {self.algo_name} ({stream_type}): {orig.name}")
-
-            if stream_type == "IO":
-                # For Insertion-Only, just apply the runner's specific format
-                clean_and_write(str(orig), str(formatted_path), self.edge_format_string)
-
-            elif stream_type == "FD":
-                # Clean first with a STRICT 2-column format to ensure no duplicates
-                temp_clean = orig.parent / f"{orig.stem}_temp_clean.txt"
-                if not temp_clean.exists():
-                    clean_and_write(str(orig), str(temp_clean), self.edge_format_string)
-
-                # Branch logic based on algorithm type
-                algo_type = self.config.get("type", None)
-
-                if algo_type == "mosso":
-                    # Creates the timeline with +1 and -1
-                    generate_dynamic_stream_graph(str(temp_clean), str(formatted_path), p_delete=0.1)
-
-                elif algo_type in ["mags"]:
-                    # Creates the final state graph (dropping 10% of edges)
-                    generate_dynamic_batch_graph(str(temp_clean), str(formatted_path), p_delete=0.1)
-
-        return str(formatted_path)
-
-    def run_multiple(self, dataset_path: str, short_name: str, output_name: str, n_runs: int, parameters: list) \
+    def run_multiple(self, dataset_path: str, output_name: str, n_runs: int, parameters: list) \
             -> tuple[Optional[float], Optional[float], list, list]:
-        format_dataset_path = self.format_dataset(dataset_path, short_name)
         times, ratios = [], []
 
         for i in range(n_runs):
             self.logger.debug(f"Iter {i + 1}/{n_runs} for {output_name}")
-            t, r = self.run_single(format_dataset_path, f"{output_name}_run{i + 1}", parameters)
+            t, r = self.run_single(dataset_path, f"{output_name}_run{i + 1}", parameters)
             if t is not None and r is not None:
                 times.append(t)
                 ratios.append(r)

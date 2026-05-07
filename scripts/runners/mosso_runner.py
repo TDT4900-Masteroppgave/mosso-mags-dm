@@ -11,7 +11,7 @@ from scripts.runners.base_runner import AlgorithmRunner
 class MossoRunner(AlgorithmRunner):
     edge_format_string = "{u}\t{v}\t1\n"
     _TIME_REGEX = re.compile(r"Execution time:\s*([\d.]+)s", re.IGNORECASE)
-    _RATIO_REGEX = re.compile(r"Expected Compression Ratio:\s*([\d.]+)", re.IGNORECASE)
+    _RATIO_REGEX = re.compile(r"Expected Compression Ratio:\s*([a-zA-Z\d.]+)", re.IGNORECASE)
 
     def __init__(self, algo_name: str, config: dict, logger, session_dir: str):
         super().__init__(algo_name, config, logger, session_dir)

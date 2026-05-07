@@ -1,4 +1,3 @@
-import os
 import platform
 import re
 import shutil
@@ -6,20 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 from scripts.runners.base_runner import AlgorithmRunner
-
-
-def _mags_build_env() -> dict:
-    env = os.environ.copy()
-    env["CXXFLAGS"] = f"{env.get('CXXFLAGS', '')} -O3"
-    if platform.system() == "Darwin":
-        for prefix in ["/opt/homebrew", "/usr/local"]:
-            llvm = Path(prefix) / "opt" / "llvm" / "bin"
-            if (llvm / "clang++").exists():
-                env["PATH"] = f"{llvm}:{env.get('PATH', '')}"
-                env["CC"] = str(llvm / "clang")
-                env["CXX"] = str(llvm / "clang++")
-                break
-    return env
 
 
 def _apply_source_hotfixes(target_dir: Path) -> None:
@@ -30,8 +15,7 @@ def _apply_source_hotfixes(target_dir: Path) -> None:
             pgsum.write_text(content.replace("#pragma omp barier", "#pragma omp barrier"), encoding="utf-8")
 
 
-def _generate_mags_cmake_lists(target_dir: Path, algo_name: str, algo_config: dict) -> None:
-    binary_file = algo_config.get("binary_file", algo_name)
+def _generate_mags_cmake_lists(target_dir: Path) -> None:
     cmake_content = f"""\
 cmake_minimum_required(VERSION 3.10)
 project(core-sum)
@@ -78,11 +62,10 @@ class MagsRunner(AlgorithmRunner):
 
     def compile_logic(self) -> None:
         _apply_source_hotfixes(self.target_dir)
-        _generate_mags_cmake_lists(self.target_dir, self.algo_name, self.config)
+        _generate_mags_cmake_lists(self.target_dir)
 
         build_dir = self.target_dir / "build"
         build_dir.mkdir(parents=True, exist_ok=True)
-        env = _mags_build_env()
 
         cmake_cmd = ["cmake", "..", "-DCMAKE_BUILD_TYPE=Release"]
         if platform.system() == "Darwin":
@@ -92,8 +75,8 @@ class MagsRunner(AlgorithmRunner):
                 "-DOpenMP_ROOT=/opt/homebrew/opt/libomp",
             ])
 
-        self._execute_cmd(cmake_cmd, cwd=build_dir, env=env, log_msg=f"[{self.algo_name}] Running cmake")
-        self._execute_cmd(["cmake", "--build", "."], cwd=build_dir, env=env, log_msg=f"[{self.algo_name}] Building")
+        self._execute_cmd(cmake_cmd, cwd=build_dir, log_msg=f"[{self.algo_name}] Running cmake")
+        self._execute_cmd(["cmake", "--build", "."], cwd=build_dir, log_msg=f"[{self.algo_name}] Building")
         _move_compiled_binary(build_dir, self.get_binary_path())
 
     def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:

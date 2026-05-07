@@ -1,11 +1,15 @@
 import gzip
-import random
+import json
+import shutil
 import subprocess
+import sys
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
-from scripts.config import DATASETS_DIR
+from scripts.config import DATASETS_DIR, DATASET_GROUP, DATASETS
+
 
 def clean_and_write(src: str, dst: str, edge_format: str = "{u}\t{v}\n") -> None:
     """Parse edges from src, write cleaned output to dst."""
@@ -87,7 +91,7 @@ def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch:
         raise e
 
 
-def download_dataset(url: str, filename: str, timeout: int = 60) -> str | None:
+def download_dataset(url: str, filename: str, timeout: int = 60) -> str:
     """Download and extract a dataset with retry/timeout on network failures."""
     gz_path = Path(DATASETS_DIR) / f"{filename}.gz"
     txt_path = Path(DATASETS_DIR) / filename
@@ -111,13 +115,21 @@ def download_dataset(url: str, filename: str, timeout: int = 60) -> str | None:
             txt_path.unlink()
         raise e
 
-def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> None:
+
+import random
+
+
+def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> int:
     """
     Generates a Fully Dynamic (FD) stream from a clean edge list.
     Edges are inserted in random order. With probability p_delete,
     an edge is deleted at a random time strictly after its insertion.
+
+    Returns:
+        int: The total number of edges that were scheduled for deletion.
     """
     events = []
+    removed_count = 0
 
     with open(src, "r", encoding="utf-8") as fin:
         for line in fin:
@@ -131,6 +143,7 @@ def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> 
                 if random.random() < p_delete:
                     t_delete = random.uniform(t_insert, 1.0)
                     events.append((t_delete, u, v, "-1"))
+                    removed_count += 1
 
     events.sort(key=lambda x: x[0])
 
@@ -138,14 +151,156 @@ def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> 
         for _, u, v, indicator in events:
             fout.write(f"{u}\t{v}\t{indicator}\n")
 
-def generate_dynamic_batch_graph(src: str, dst: str, p_delete: float = 0.1) -> None:
+    return removed_count
+
+
+def generate_dynamic_batch_graph(src: str, dst: str, p_delete: float = 0.1) -> int:
     """
     Generates the final static state of a fully dynamic stream.
     Since 10% of edges are deleted during the stream, the final batch
     graph is simply the remaining 90% of the original edges.
+
+    Returns:
+        int: The total number of edges that were dropped (deleted).
     """
+    removed_count = 0
+
     with open(src, "r", encoding="utf-8") as fin, open(dst, "w", encoding="utf-8") as fout:
         for line in fin:
             # 90% chance to survive to the end of the stream
             if random.random() >= p_delete:
                 fout.write(line)
+            else:
+                removed_count += 1
+
+    return removed_count
+
+from collections import defaultdict
+
+def calculate_topology(file_path: str) -> tuple[int, int, float, int, float]:
+    """
+    Reads a preprocessed file to calculate graph topology.
+    """
+    nodes = set()
+    edge_count = 0
+    degrees = defaultdict(int)
+
+    with open(file_path, "r", encoding="utf-8") as fin:
+        for line in fin:
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    u, v = int(parts[0]), int(parts[1])
+                    nodes.add(u)
+                    nodes.add(v)
+                    edge_count += 1
+                    degrees[u] += 1
+                    degrees[v] += 1
+                except ValueError:
+                    continue
+
+    num_nodes = len(nodes)
+    avg_deg = (2.0 * edge_count / num_nodes) if num_nodes > 0 else 0.0
+    max_deg = max(degrees.values()) if degrees else 0
+
+    density = 0.0
+    if num_nodes > 1:
+        density = (2.0 * edge_count) / (num_nodes * (num_nodes - 1))
+
+    return num_nodes, edge_count, round(avg_deg, 2), max_deg, density
+
+
+def prepare_datasets(datasets_to_run, active_algos, logger) -> dict:
+    prepared_paths = {}
+    required_algo_types = {config.get("type") for config in active_algos.values() if config.get("type")}
+
+    log_file = DATASETS_DIR / "preprocessing_log.json"
+    prep_log = {}
+    if log_file.exists():
+        with open(log_file, "r", encoding="utf-8") as f:
+            prep_log = json.load(f)
+
+    for ds in datasets_to_run:
+        with logger.status(f"[bold cyan]Preprocessing Dataset: {ds.get('filename', 'N/A')} [/bold cyan]"):
+            short_name = ds.get("short_name", "N/A")
+            prepared_paths[short_name] = {}
+
+            if short_name not in prep_log:
+                prep_log[short_name] = {}
+
+            raw_path = Path(download_dataset(ds.get("url"), ds.get("filename")))
+            is_dynamic = "dynamic" in sys.argv and short_name in DATASET_GROUP.get("dynamic", [])
+            stream_type = "FD" if is_dynamic else "IO"
+
+            temp_clean = raw_path.parent / f"{raw_path.stem}_temp_clean.txt"
+            topo_data = None
+
+            for algo_type in required_algo_types:
+                save_dir = raw_path.parent / algo_type.capitalize()
+                save_dir.mkdir(exist_ok=True)
+                formatted_path = save_dir / f"{algo_type}_{raw_path.stem}_{stream_type}.txt"
+
+                deleted = 0
+                p_del_val = 0.1 if stream_type == "FD" else 0.0
+
+                if not formatted_path.exists():
+                    logger.status(f"[bold cyan]Preprocessing {short_name} for {algo_type} ({stream_type})[/bold cyan]")
+
+                    if not temp_clean.exists():
+                        clean_and_write(str(raw_path), str(temp_clean), "{u}\t{v}\n")
+
+                    if topo_data is None:
+                        logger.status(f"[bold cyan]Calculating topology for {short_name}[/bold cyan]")
+                        topo_data = calculate_topology(str(temp_clean))
+
+                    num_nodes, total_edges, avg_deg, max_deg, density = topo_data
+
+                    if stream_type == "IO":
+                        if algo_type == "mosso":
+                            # Fast line-by-line format mapping
+                            with open(temp_clean, "r", encoding="utf-8") as fin, open(formatted_path, "w", encoding="utf-8") as fout:
+                                for line in fin:
+                                    fout.write(f"{line.strip()}\t1\n")
+                        else:
+                            shutil.copy(temp_clean, formatted_path)
+
+                    elif stream_type == "FD":
+                        if algo_type == "mosso":
+                            deleted = generate_dynamic_stream_graph(str(temp_clean), str(formatted_path), p_delete=p_del_val)
+                        elif algo_type == "mags":
+                            deleted = generate_dynamic_batch_graph(str(temp_clean), str(formatted_path), p_delete=p_del_val)
+
+                    prep_log[short_name][algo_type] = {
+                        "timestamp": datetime.now().isoformat(),
+                        "stream_type": stream_type,
+                        "p_delete": p_del_val,
+                        "nodes": num_nodes,
+                        "edges": total_edges,
+                        "avg_degree": avg_deg,
+                        "max_degree": max_deg,
+                        "density": density,
+                        "deleted_edges": deleted,
+                        "file_path": str(formatted_path)
+                    }
+                    with open(log_file, "w", encoding="utf-8") as f:
+                        json.dump(prep_log, f, indent=4)
+
+                else:
+                    log_entry = prep_log.get(short_name, {}).get(algo_type, {})
+                    num_nodes = log_entry.get("nodes", 0)
+                    total_edges = log_entry.get("edges", 0)
+
+                # Overwrite Config in Memory
+                if "meta" not in ds: ds["meta"] = {}
+                if "meta" not in DATASETS.get(short_name, {}): DATASETS[short_name]["meta"] = {}
+
+                for meta_target in [ds["meta"], DATASETS[short_name]["meta"]]:
+                    meta_target["nodes"] = num_nodes
+                    meta_target["edges"] = total_edges
+
+                prepared_paths[short_name][algo_type] = str(formatted_path)
+
+            if temp_clean.exists():
+                temp_clean.unlink()
+
+    return prepared_paths

@@ -57,7 +57,7 @@ class Bayesian(Experiment):
 
                 for ds in self.datasets_to_run:
                     short_name, dataset_path = self._get_dataset(ds)
-                    res = self.execute_runner(algo_name, dataset_path, short_name, params)
+                    res = self.execute_runner(algo_name, short_name, params)
 
                     if not res:
                         raise optuna.exceptions.TrialPruned()

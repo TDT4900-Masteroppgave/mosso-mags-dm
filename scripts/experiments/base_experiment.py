@@ -16,6 +16,7 @@ from rich.table import Table
 import scripts.db as db
 from scripts.config import ALGORITHMS, DATASET_GROUP, DATASETS, EXPERIMENT_DIR, PARAM_CONFIG
 from scripts.datasets import download_dataset
+from scripts.datasets import prepare_datasets
 from scripts.runners.base_runner import get_runner
 from scripts.utils import (
     Logger, get_confidence_interval, get_datasets_to_run,
@@ -36,6 +37,17 @@ class Experiment(ABC):
 
         self.logger = Logger(str(self.session_dir / "execution.log"))
         self.db_conn = None
+        self.prepared_dataset = {}
+
+        missing_algos = [name for name in self.args.algorithm if name not in ALGORITHMS]
+        if missing_algos:
+            self.logger.error(f"Missing algorithms: {missing_algos}")
+            self.logger.print(
+                f"\n[bold red]Error:[/] The following algorithms were not found in config.py: [yellow]{', '.join(missing_algos)}[/]")
+            self.logger.print(f"Available options are: [green]{', '.join(ALGORITHMS.keys())}[/]\n")
+            sys.exit(1)
+
+        self.active_algos = {name: ALGORITHMS[name] for name in self.args.algorithm}
 
     def __enter__(self):
         self.db_conn = db.init_db(self.session_dir)
@@ -67,6 +79,14 @@ class Experiment(ABC):
 
             self.write_metadata()
             self.print_parameters()
+
+            self.logger.rule("[bold]Preprocessing Datasets[/bold]")
+            self.prepared_dataset = prepare_datasets(
+                self.datasets_to_run, self.active_algos, self.logger
+            )
+            self.post_preprocessing()
+            self.print_dataset()
+
             self._build_algorithms()
 
             self.logger.rule("[bold]Processing[/bold]")
@@ -85,6 +105,10 @@ class Experiment(ABC):
             elapsed = time.time() - start_time
             self.logger.print(f"[dim]Total Benchmark Time:[/dim] {elapsed:.2f} seconds")
             self.logger.print(f"[dim]Output:[/dim] {self.session_dir}")
+
+    def post_preprocessing(self):
+        """Hook for subclasses to manipulate datasets before building/processing. Empty by default."""
+        pass
 
     @staticmethod
     def _get_dataset(ds: pd.DataFrame) -> tuple[str, str]:
@@ -139,16 +163,22 @@ class Experiment(ABC):
                 config_val if config_val is not None else (cli_val if cli_val is not None else default_val))
         return params
 
-    def execute_runner(self, algo_name: str, dataset_path: str, dataset_short_name: str, params: dict[str, str]):
+    def execute_runner(self, algo_name: str, dataset_short_name: str, params: dict, custom_path: str = None,
+                       custom_output_name: str = None):
         runner = get_runner(algo_name, self.logger, str(self.session_dir))
+
+        algo_type = self.active_algos[algo_name].get("type")
+        preprocessed_path = custom_path if custom_path else self.prepared_dataset[dataset_short_name][algo_type]
+
         if not runner.binary_exists():
             self.logger.warning(f"[!] Binary not found for {algo_name}. Skipping.")
             return None
 
+        run_id = custom_output_name if custom_output_name else dataset_short_name
+
         with self.logger.status(f"[bold blue]Running {algo_name} | params: {params} [/bold blue]"):
-            output_name = f"{algo_name}_{dataset_short_name}_{self.timestamp}"
-            res = runner.run_multiple(dataset_path, dataset_short_name, output_name, self.args.runs,
-                                      list(params.values()))
+            output_name = f"{algo_name}_{run_id}_{self.timestamp}"
+            res = runner.run_multiple(preprocessed_path, output_name, self.args.runs, list(params.values()))
 
         t_avg, r_avg, t_list, r_list = res
         if t_avg is None or r_avg is None:
@@ -242,6 +272,37 @@ class Experiment(ABC):
 
         return args
 
+    def print_dataset(self):
+        num_datasets = len(self.datasets_to_run)
+        self.logger.print(f"\n[bold]Datasets[/bold] ({num_datasets})")
+
+        ds_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
+        ds_table.add_column("ID")
+        ds_table.add_column("Size", justify="right")
+        ds_table.add_column("Nodes", justify="right")
+        ds_table.add_column("Edges", justify="right")
+        ds_table.add_column("Deleted Edges", justify="right")
+
+        for ds in self.datasets_to_run:
+            meta = ds.get("meta", {})
+            nodes = meta.get("nodes", "N/A")
+            edges = meta.get("edges", "N/A")
+            deleted_edges = meta.get("deleted_edges", "N/A")
+
+            disp_nodes = f"{nodes:,}" if isinstance(nodes, int) else str(nodes)
+            disp_edges = f"{edges:,}" if isinstance(edges, int) else str(edges)
+            disp_deleted_edges = f"{deleted_edges:,}" if isinstance(deleted_edges, int) else str(deleted_edges)
+
+            ds_table.add_row(
+                ds.get("short_name", "N/A"),
+                str(meta.get("size", "N/A")),
+                disp_nodes,
+                disp_edges,
+                disp_deleted_edges,
+            )
+
+        self.logger.print(ds_table)
+
     def print_parameters(self) -> None:
         self.logger.print("[bold]General Parameters[/bold]")
         gen_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
@@ -280,31 +341,3 @@ class Experiment(ABC):
                 hp_table.add_row(param_key, str(val))
 
             self.logger.print(hp_table)
-
-        num_datasets = len(self.datasets_to_run)
-        self.logger.print(f"\n[bold]Datasets[/bold] ({num_datasets})")
-
-        ds_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-        ds_table.add_column("ID")
-        ds_table.add_column("Size", justify="right")
-        ds_table.add_column("Nodes", justify="right")
-        ds_table.add_column("Edges", justify="right")
-        ds_table.add_column("Avg Deg", justify="right")
-
-        for ds in self.datasets_to_run:
-            meta = ds.get("meta", {})
-            nodes = meta.get("nodes", "N/A")
-            edges = meta.get("edges", "N/A")
-
-            disp_nodes = f"{nodes:,}" if isinstance(nodes, int) else str(nodes)
-            disp_edges = f"{edges:,}" if isinstance(edges, int) else str(edges)
-
-            ds_table.add_row(
-                ds.get("short_name", "N/A"),
-                str(meta.get("size", "N/A")),
-                disp_nodes,
-                disp_edges,
-                str(meta.get("avg_degree", "N/A")),
-            )
-
-        self.logger.print(ds_table)

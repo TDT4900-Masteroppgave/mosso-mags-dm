@@ -124,8 +124,6 @@ DATASETS = {
             "nodes": 26475,
             "edges": 53381,
             "size": "0.66 MB",
-            "avg_degree": 4.03,
-            "density": 1.523215e-04,
         },
     },
     "EN": {
@@ -135,8 +133,6 @@ DATASETS = {
             "nodes": 36692,
             "edges": 183831,
             "size": "2.11 MB",
-            "avg_degree": 10.02,
-            "density": 2.730976e-04,
         },
     },
     "BK": {
@@ -147,7 +143,6 @@ DATASETS = {
             "edges": 214078,
             "size": "2.59 MB",
             "avg_degree": 7.35,
-            "density": 1.262832e-04,
         },
     },
     "EA": {
@@ -157,8 +152,6 @@ DATASETS = {
             "nodes": 265009,
             "edges": 364481,
             "size": "4.52 MB",
-            "avg_degree": 2.75,
-            "density": 1.037971e-05,
         },
     },
     "SL": {
@@ -168,8 +161,6 @@ DATASETS = {
             "nodes": 82168,
             "edges": 504230,
             "size": "6.18 MB",
-            "avg_degree": 12.27,
-            "density": 1.493683e-04,
         },
     },
     "DB": {
@@ -179,8 +170,6 @@ DATASETS = {
             "nodes": 317080,
             "edges": 1049866,
             "size": "15.29 MB",
-            "avg_degree": 6.62,
-            "density": 2.088467e-05,
         },
     },
     "AM": {
@@ -190,7 +179,6 @@ DATASETS = {
             "nodes": 403394,
             "edges": 2443408,
             "size": "35.09 MB",
-            "avg_degree": 12.11,
         },
     },
     "YT": {
@@ -200,7 +188,6 @@ DATASETS = {
             "nodes": 1134890,
             "edges": 2987624,
             "size": "42.63 MB",
-            "avg_degree": 5.27,
         },
     },
     "SK": {
@@ -210,7 +197,6 @@ DATASETS = {
             "nodes": 1696415,
             "edges": 11095298,
             "size": "163.36 MB",
-            "avg_degree": 13.08,
         },
     },
     "LJ": {
@@ -220,7 +206,6 @@ DATASETS = {
             "nodes": 3997962,
             "edges": 34681189,
             "size": "544.47 MB",
-            "avg_degree": 17.35,
         },
     },
 }
@@ -232,16 +217,10 @@ DATASET_GROUP = {
     "large": [
         "AM", "YT", "SK", "LJ"
     ],
-    #"insertion": [
-    #    "CA", "EN", "BK", "EA", "SL", "AM",
-    #],
     "insertion": [
-        "CA",
+        "CA", "EN", "BK", "EA", "SL", "AM",
     ],
-    #"dynamic": [
-    #    "DB", "YT", "SK", "LJ"
-    #]
     "dynamic": [
-        "DB",
+        "DB", "YT", "SK", #"LJ"
     ]
 }
