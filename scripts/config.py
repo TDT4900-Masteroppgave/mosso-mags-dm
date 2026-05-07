@@ -117,6 +117,11 @@ ALGORITHMS = {
 }
 
 DATASETS = {
+    "PR": {
+        "url": "http://konect.cc/files/download.tsv.reactome.tar.bz2",
+        "filename": "out.reactome",
+        "meta": {}
+    },
     "CA": {
         "url": "https://snap.stanford.edu/data/as-caida20071105.txt.gz",
         "filename": "as-caida20071105.txt",
@@ -126,13 +131,18 @@ DATASETS = {
             "size": "0.66 MB",
         },
     },
+    "FB": {
+        "url": "https://nrvis.com/download/data/dynamic/fb-wosn-friends.zip",
+        "filename": "fb-wosn-friends.edges",
+        "meta": {}
+    },
     "EN": {
-        "url": "https://snap.stanford.edu/data/email-Enron.txt.gz",
-        "filename": "Email-Enron.txt",
+        "url": "https://nrvis.com/download/data/dynamic/ia-enron-email-dynamic.zip",
+        "filename": "email-enron.edges",
         "meta": {
-            "nodes": 36692,
-            "edges": 183831,
-            "size": "2.11 MB",
+            "nodes": 86977,
+            "edges": 297456,
+            "size": "0.75 MB",
         },
     },
     "BK": {
@@ -181,6 +191,15 @@ DATASETS = {
             "size": "35.09 MB",
         },
     },
+    "EU": {
+        "url": "https://sparse.tamu.edu/MM/LAW/eu-2005.tar.gz",
+        "filename": "eu-2005.mtx",
+        "meta": {
+            "nodes": 862664,
+            "edges": 16138468,
+            "type": "Hyperlink"
+        },
+    },
     "YT": {
         "url": "https://snap.stanford.edu/data/bigdata/communities/com-youtube.ungraph.txt.gz",
         "filename": "com-youtube.ungraph.txt",
@@ -197,6 +216,24 @@ DATASETS = {
             "nodes": 1696415,
             "edges": 11095298,
             "size": "163.36 MB",
+        },
+    },
+    "HW": {
+        "url": "https://sparse.tamu.edu/MM/LAW/hollywood-2009.tar.gz",
+        "filename": "hollywood-2009.mtx",
+        "meta": {
+            "nodes": 1139905,
+            "edges": 113891327,
+            "type": "Collaboration"
+        },
+    },
+    "UK": {
+        "url": "https://sparse.tamu.edu/MM/LAW/uk-2002.tar.gz",
+        "filename": "uk-2002.mtx",
+        "meta": {
+            "nodes": 18483186,
+            "edges": 261787258,
+            "type": "Hyperlink"
         },
     },
     "LJ": {
@@ -218,9 +255,9 @@ DATASET_GROUP = {
         "AM", "YT", "SK", "LJ"
     ],
     "insertion": [
-        "CA", "EN", "BK", "EA", "SL", "AM",
+        "PR", "EN", "FB", "EU", "HW", "UK",
     ],
     "dynamic": [
-        "DB", "YT", "SK", #"LJ"
+        "DB", "YT", "SK",  "LJ"
     ]
 }

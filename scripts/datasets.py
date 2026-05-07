@@ -5,23 +5,40 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
 from scripts.config import DATASETS_DIR, DATASET_GROUP, DATASETS
 
 
-def clean_and_write(src: str, dst: str, edge_format: str = "{u}\t{v}\n") -> None:
-    """Parse edges from src, write cleaned output to dst."""
+def clean_and_write(src: str, dst: str, algo_type: str) -> None:
+    is_text_format = src.endswith((".txt", ".edges"))
+    is_mtx = src.endswith(".mtx")
+
+    if not (is_text_format or is_mtx):
+        raise ValueError(f"Unsupported file format: {src}")
+
     seen = set()
+    header_skipped = False
+
     with open(src, "r", encoding="utf-8") as fin, open(dst, "w", encoding="utf-8") as fout:
         for line in fin:
             if line.startswith(("#", "%")):
                 continue
 
+            if is_mtx and not header_skipped:
+                header_skipped = True
+                continue
+
             parts = line.split()
             if len(parts) < 2:
                 continue
+
+            if is_text_format and len(parts) >= 4:
+                # The timestamp is usually the 4th column (index 3)
+                if parts[3] in ("0", "0.0", "\\N", "-1"):
+                    continue
 
             try:
                 u, v = int(parts[0]), int(parts[1])
@@ -29,7 +46,10 @@ def clean_and_write(src: str, dst: str, edge_format: str = "{u}\t{v}\n") -> None
                     edge = (min(u, v), max(u, v))
                     if edge not in seen:
                         seen.add(edge)
-                        fout.write(edge_format.format(u=u, v=v))
+                        if algo_type == "mosso":
+                            fout.write(f"{u}\t{v}\t1\n")
+                        else:
+                            fout.write(f"{u}\t{v}\n")
             except ValueError:
                 continue
 
@@ -90,29 +110,51 @@ def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch:
     except subprocess.CalledProcessError as e:
         raise e
 
+import tarfile
 
 def download_dataset(url: str, filename: str, timeout: int = 60) -> str:
-    """Download and extract a dataset with retry/timeout on network failures."""
-    gz_path = Path(DATASETS_DIR) / f"{filename}.gz"
+    archive_path = Path(DATASETS_DIR) / Path(url).name
     txt_path = Path(DATASETS_DIR) / filename
 
     if txt_path.exists():
         return str(txt_path)
 
     try:
-        if not gz_path.exists():
-            with urllib.request.urlopen(url, timeout=timeout) as response, open(gz_path, "wb") as out:
+        if not archive_path.exists():
+            with urllib.request.urlopen(url, timeout=timeout) as response, open(archive_path, "wb") as out:
                 out.write(response.read())
-        with gzip.open(gz_path, "rt") as f_in, open(txt_path, "w") as f_out:
-            for line in f_in:
-                f_out.write(line)
 
-        gz_path.unlink()
+        # 1. Handle Enron/Network Repository .zip format
+        if url.endswith(".zip"):
+            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                # Find the .edges file (it's often inside a subdirectory)
+                member = next(m for m in zip_ref.namelist() if m.endswith(".edges"))
+                with zip_ref.open(member) as f_in, open(txt_path, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+
+        # 2. Handle Reactome .tar.bz2 format
+        elif url.endswith(".tar.bz2"):
+            with tarfile.open(archive_path, "r:bz2") as tar:
+                member = next(m for m in tar.getmembers() if "out." in m.name)
+                with tar.extractfile(member) as f_in, open(txt_path, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+
+        # 3. Handle EU/SuiteSparse .tar.gz format
+        elif url.endswith(".tar.gz"):
+            with tarfile.open(archive_path, "r:gz") as tar:
+                member = next(m for m in tar.getmembers() if m.name.endswith(".mtx"))
+                with tar.extractfile(member) as f_in, open(txt_path, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+
+        else:
+            # 4. Standard .gz logic for SNAP datasets
+            with gzip.open(archive_path, "rt") as f_in, open(txt_path, "w") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+
+        archive_path.unlink()  # Clean up the .zip/.gz archive
         return str(txt_path)
-
     except Exception as e:
-        if txt_path.exists():
-            txt_path.unlink()
+        if txt_path.exists(): txt_path.unlink()
         raise e
 
 
@@ -175,7 +217,9 @@ def generate_dynamic_batch_graph(src: str, dst: str, p_delete: float = 0.1) -> i
 
     return removed_count
 
+
 from collections import defaultdict
+
 
 def calculate_topology(file_path: str) -> tuple[int, int, float, int, float]:
     """
@@ -258,7 +302,8 @@ def prepare_datasets(datasets_to_run, active_algos, logger) -> dict:
                     if stream_type == "IO":
                         if algo_type == "mosso":
                             # Fast line-by-line format mapping
-                            with open(temp_clean, "r", encoding="utf-8") as fin, open(formatted_path, "w", encoding="utf-8") as fout:
+                            with open(temp_clean, "r", encoding="utf-8") as fin, open(formatted_path, "w",
+                                                                                      encoding="utf-8") as fout:
                                 for line in fin:
                                     fout.write(f"{line.strip()}\t1\n")
                         else:
@@ -266,9 +311,11 @@ def prepare_datasets(datasets_to_run, active_algos, logger) -> dict:
 
                     elif stream_type == "FD":
                         if algo_type == "mosso":
-                            deleted = generate_dynamic_stream_graph(str(temp_clean), str(formatted_path), p_delete=p_del_val)
+                            deleted = generate_dynamic_stream_graph(str(temp_clean), str(formatted_path),
+                                                                    p_delete=p_del_val)
                         elif algo_type == "mags":
-                            deleted = generate_dynamic_batch_graph(str(temp_clean), str(formatted_path), p_delete=p_del_val)
+                            deleted = generate_dynamic_batch_graph(str(temp_clean), str(formatted_path),
+                                                                   p_delete=p_del_val)
 
                     # --- NEW LOGGING STRUCTURE ---
                     if "dataset_metadata" not in prep_log[short_name]:
