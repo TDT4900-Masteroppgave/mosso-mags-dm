@@ -80,7 +80,7 @@ class Experiment(ABC):
             self.write_metadata()
             self.print_parameters()
 
-            self.logger.rule("[bold]Preprocessing Datasets[/bold]")
+            self.logger.rule("[bold]Preprocessing[/bold]")
             self.prepared_dataset = prepare_datasets(
                 self.datasets_to_run, self.active_algos, self.logger
             )
@@ -278,7 +278,7 @@ class Experiment(ABC):
 
         ds_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
         ds_table.add_column("ID")
-        ds_table.add_column("Size", justify="right")
+        ds_table.add_column("Type")  # New column added here
         ds_table.add_column("Nodes", justify="right")
         ds_table.add_column("Edges", justify="right")
 
@@ -286,13 +286,14 @@ class Experiment(ABC):
             meta = ds.get("meta", {})
             nodes = meta.get("nodes", "N/A")
             edges = meta.get("edges", "N/A")
+            ds_type = meta.get("type", "N/A")  # Extracting type
 
             disp_nodes = f"{nodes:,}" if isinstance(nodes, int) else str(nodes)
             disp_edges = f"{edges:,}" if isinstance(edges, int) else str(edges)
 
             ds_table.add_row(
                 ds.get("short_name", "N/A"),
-                str(meta.get("size", "N/A")),
+                ds_type,
                 disp_nodes,
                 disp_edges,
             )
