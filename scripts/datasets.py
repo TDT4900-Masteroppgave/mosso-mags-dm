@@ -1,13 +1,15 @@
+import sys
 import gzip
 import json
 import shutil
+import random
+import zipfile
+import tarfile
 import subprocess
-import sys
 import urllib.error
 import urllib.request
-import zipfile
-from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
 
 from scripts.config import DATASETS_DIR, DATASET_GROUP, DATASETS
 
@@ -15,9 +17,6 @@ from scripts.config import DATASETS_DIR, DATASET_GROUP, DATASETS
 def clean_and_write(src: str, dst: str, algo_type: str) -> None:
     is_text_format = src.endswith((".txt", ".edges"))
     is_mtx = src.endswith(".mtx")
-
-    if not (is_text_format or is_mtx):
-        raise ValueError(f"Unsupported file format: {src}")
 
     seen = set()
     header_skipped = False
@@ -36,7 +35,6 @@ def clean_and_write(src: str, dst: str, algo_type: str) -> None:
                 continue
 
             if is_text_format and len(parts) >= 4:
-                # The timestamp is usually the 4th column (index 3)
                 if parts[3] in ("0", "0.0", "\\N", "-1"):
                     continue
 
@@ -54,47 +52,6 @@ def clean_and_write(src: str, dst: str, algo_type: str) -> None:
                 continue
 
 
-def create_partial_dataset(dataset_path: str, fraction: float, total_edges: int, logger=None) -> str:
-    """Write a file containing the first (fraction * total_edges) unique edges."""
-    src_path = Path(dataset_path)
-    target_edges = int(total_edges * fraction)
-
-    partial_dir = src_path.parent / "partial"
-    partial_dir.mkdir(exist_ok=True)
-
-    out_path = partial_dir / f"p{int(fraction * 100)}_{src_path.name}"
-
-    if out_path.exists():
-        return str(out_path)
-
-    seen = set()
-    with open(src_path, "r", encoding="utf-8") as fin, open(out_path, "w", encoding="utf-8") as fout:
-        for line in fin:
-            if line.startswith(("#", "%")):
-                continue
-
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-
-            try:
-                u, v = int(parts[0]), int(parts[1])
-                if u != v:
-                    edge = (min(u, v), max(u, v))
-                    if edge not in seen:
-                        seen.add(edge)
-                        fout.write(line)
-                        if len(seen) >= target_edges:
-                            break
-            except ValueError:
-                continue
-
-    if logger:
-        logger.debug(f"\t[*] Partial dataset ({fraction:.0%}): {len(seen):,} edges -> {out_path}")
-
-    return str(out_path)
-
-
 def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch: str, logger) -> None:
     target = Path(target_dir)
     try:
@@ -106,11 +63,9 @@ def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch:
             logger.debug(f"[{algo_name}] Target directory exists. Pulling latest updates...")
             subprocess.run(["git", "pull", "-q"], cwd=str(target),
                            check=True, capture_output=True, text=True)
-
     except subprocess.CalledProcessError as e:
         raise e
 
-import tarfile
 
 def download_dataset(url: str, filename: str, timeout: int = 60) -> str:
     archive_path = Path(DATASETS_DIR) / Path(url).name
@@ -124,54 +79,43 @@ def download_dataset(url: str, filename: str, timeout: int = 60) -> str:
             with urllib.request.urlopen(url, timeout=timeout) as response, open(archive_path, "wb") as out:
                 out.write(response.read())
 
-        # 1. Handle Enron/Network Repository .zip format
         if url.endswith(".zip"):
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                # Find the .edges file (it's often inside a subdirectory)
                 member = next(m for m in zip_ref.namelist() if m.endswith(".edges"))
                 with zip_ref.open(member) as f_in, open(txt_path, "wb") as f_out:
-                    shutil.copyfileobj(f_in, f_out)
+                    shutil.copyfileobj(f_in, f_out)  # type: ignore
 
-        # 2. Handle Reactome .tar.bz2 format
         elif url.endswith(".tar.bz2"):
             with tarfile.open(archive_path, "r:bz2") as tar:
-                member = next(m for m in tar.getmembers() if "out." in m.name)
-                with tar.extractfile(member) as f_in, open(txt_path, "wb") as f_out:
-                    shutil.copyfileobj(f_in, f_out)
+                member_info = next(m for m in tar.getmembers() if "out." in m.name)
+                f_in = tar.extractfile(member_info)
+                if f_in is not None:
+                    with open(txt_path, "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)  # type: ignore
 
-        # 3. Handle EU/SuiteSparse .tar.gz format
         elif url.endswith(".tar.gz"):
             with tarfile.open(archive_path, "r:gz") as tar:
-                member = next(m for m in tar.getmembers() if m.name.endswith(".mtx"))
-                with tar.extractfile(member) as f_in, open(txt_path, "wb") as f_out:
-                    shutil.copyfileobj(f_in, f_out)
+                member_info = next(m for m in tar.getmembers() if m.name.endswith(".mtx"))
+                f_in = tar.extractfile(member_info)
+                if f_in is not None:
+                    with open(txt_path, "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)  # type: ignore
 
         else:
-            # 4. Standard .gz logic for SNAP datasets
             with gzip.open(archive_path, "rt") as f_in, open(txt_path, "w") as f_out:
                 shutil.copyfileobj(f_in, f_out)
 
-        archive_path.unlink()  # Clean up the .zip/.gz archive
+        archive_path.unlink()
         return str(txt_path)
     except Exception as e:
         if txt_path.exists(): txt_path.unlink()
         raise e
 
 
-import random
-
-
-def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> int:
-    """
-    Generates a Fully Dynamic (FD) stream from a clean edge list.
-    Edges are inserted in random order. With probability p_delete,
-    an edge is deleted at a random time strictly after its insertion.
-
-    Returns:
-        int: The total number of edges that were scheduled for deletion.
-    """
+def generate_master_stream(src: str, dst: str, p_delete: float = 0.1) -> int:
     events = []
     removed_count = 0
+    stream_rng = random.Random(42)
 
     with open(src, "r", encoding="utf-8") as fin:
         for line in fin:
@@ -179,11 +123,11 @@ def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> 
             if len(parts) >= 2:
                 u, v = parts[0], parts[1]
 
-                t_insert = random.random()
+                t_insert = stream_rng.random()
                 events.append((t_insert, u, v, "1"))
 
-                if random.random() < p_delete:
-                    t_delete = random.uniform(t_insert, 1.0)
+                if stream_rng.random() < p_delete:
+                    t_delete = stream_rng.uniform(t_insert, 1.0)
                     events.append((t_delete, u, v, "-1"))
                     removed_count += 1
 
@@ -196,35 +140,25 @@ def generate_dynamic_stream_graph(src: str, dst: str, p_delete: float = 0.1) -> 
     return removed_count
 
 
-def generate_dynamic_batch_graph(src: str, dst: str, p_delete: float = 0.1) -> int:
-    """
-    Generates the final static state of a fully dynamic stream.
-    Since 10% of edges are deleted during the stream, the final batch
-    graph is simply the remaining 90% of the original edges.
+def extract_batch_snapshot(stream_src: str, batch_dst: str) -> None:
+    active_edges = {}
 
-    Returns:
-        int: The total number of edges that were dropped (deleted).
-    """
-    removed_count = 0
-
-    with open(src, "r", encoding="utf-8") as fin, open(dst, "w", encoding="utf-8") as fout:
+    with open(stream_src, "r", encoding="utf-8") as fin:
         for line in fin:
-            # 90% chance to survive to the end of the stream
-            if random.random() >= p_delete:
-                fout.write(line)
-            else:
-                removed_count += 1
+            parts = line.split()
+            if len(parts) >= 3:
+                u, v, indicator = parts[0], parts[1], parts[2]
+                if indicator == "1":
+                    active_edges[(u, v)] = True
+                elif indicator == "-1":
+                    active_edges.pop((u, v), None)
 
-    return removed_count
-
-
-from collections import defaultdict
+    with open(batch_dst, "w", encoding="utf-8") as fout:
+        for u, v in active_edges.keys():
+            fout.write(f"{u}\t{v}\n")
 
 
 def calculate_topology(file_path: str) -> tuple[int, int, float, int, float]:
-    """
-    Reads a preprocessed file to calculate graph topology.
-    """
     nodes = set()
     edge_count = 0
     degrees = defaultdict(int)
@@ -246,121 +180,116 @@ def calculate_topology(file_path: str) -> tuple[int, int, float, int, float]:
     num_nodes = len(nodes)
     avg_deg = (2.0 * edge_count / num_nodes) if num_nodes > 0 else 0.0
     max_deg = max(degrees.values()) if degrees else 0
-
-    density = 0.0
-    if num_nodes > 1:
-        density = (2.0 * edge_count) / (num_nodes * (num_nodes - 1))
+    density = (2.0 * edge_count) / (num_nodes * (num_nodes - 1)) if num_nodes > 1 else 0.0
 
     return num_nodes, edge_count, round(avg_deg, 2), max_deg, density
 
+def _write_algorithm_format(algo_type: str, stream_type: str, temp_clean: Path, master_stream: Path, out_path: Path):
+    """Handles the specific file mapping based on algorithm and stream type."""
+    if stream_type == "IO":
+        if algo_type == "mosso":
+            with open(temp_clean, "r", encoding="utf-8") as fin, open(out_path, "w", encoding="utf-8") as fout:
+                for line in fin:
+                    fout.write(f"{line.strip()}\t1\n")
+        else:
+            shutil.copy(temp_clean, out_path)
+    elif stream_type == "FD":
+        if algo_type == "mosso":
+            shutil.copy(master_stream, out_path)
+        elif algo_type == "mags":
+            extract_batch_snapshot(str(master_stream), str(out_path))
+
+
+def _process_dataset_pipeline(ds: dict, required_algos: set, logger, prep_log: dict) -> dict:
+    """Manages the generation pipeline for a single dataset and updates the config."""
+    short_name = ds.get("short_name", "N/A")
+    raw_path = Path(download_dataset(ds.get("url"), ds.get("filename")))
+
+    is_dynamic = "dynamic" in sys.argv and short_name in DATASET_GROUP.get("dynamic", [])
+    stream_type = "FD" if is_dynamic else "IO"
+    p_del_val = 0.1 if stream_type == "FD" else 0.0
+
+    temp_clean = raw_path.parent / f"{raw_path.stem}_temp_clean.txt"
+    master_stream = raw_path.parent / f"{raw_path.stem}_master_stream.txt"
+
+    #  Determine which algorithm files are missing
+    formatted_paths = {}
+    needs_building = False
+    for algo in required_algos:
+        save_dir = raw_path.parent / algo.capitalize()
+        save_dir.mkdir(exist_ok=True)
+        fmt_path = save_dir / f"{algo}_{raw_path.stem}_{stream_type}.txt"
+        formatted_paths[algo] = fmt_path
+        if not fmt_path.exists():
+            needs_building = True
+
+    # Initialize log entry if new
+    if short_name not in prep_log:
+        prep_log[short_name] = {"metadata": {}, "algorithms": {}}
+
+    # Build Intermediates and Formats
+    if needs_building:
+        needs_temp_clean = not prep_log[short_name].get("metadata") or (stream_type == "IO") or (stream_type == "FD" and not master_stream.exists())
+
+        if needs_temp_clean and not temp_clean.exists():
+            clean_and_write(str(raw_path), str(temp_clean), "mags")
+
+        # Topology Calculation
+        if not prep_log[short_name].get("metadata"):
+            logger.status(f"[bold cyan]Calculating topology for {short_name}[/bold cyan]")
+            num_nodes, total_edges, avg_deg, max_deg, density = calculate_topology(str(temp_clean))
+            prep_log[short_name]["metadata"] = {
+                "stream_type": stream_type, "p_delete": p_del_val,
+                "nodes": num_nodes, "edges": total_edges, "deleted_edges": 0,
+                "avg_degree": avg_deg, "max_degree": max_deg, "density": density
+            }
+
+        # Master Stream (FD)
+        if stream_type == "FD" and not master_stream.exists():
+            logger.status(f"[bold cyan]Generating Ground Truth Timeline for {short_name}[/bold cyan]")
+            deleted_edges = generate_master_stream(str(temp_clean), str(master_stream), p_delete=p_del_val)
+            prep_log[short_name]["metadata"]["deleted_edges"] = deleted_edges
+
+        # Final Formatting
+        for algo, fmt_path in formatted_paths.items():
+            if not fmt_path.exists():
+                logger.status(f"[bold cyan]Preprocessing {short_name} for {algo} ({stream_type})[/bold cyan]")
+                _write_algorithm_format(algo, stream_type, temp_clean, master_stream, fmt_path)
+                prep_log[short_name]["algorithms"][algo] = {"file_path": str(fmt_path)}
+
+    # Synchronize Memory Configuration
+    meta = prep_log[short_name]["metadata"]
+    for target in [ds.setdefault("meta", {}), DATASETS.setdefault(short_name, {}).setdefault("meta", {})]:
+        target.update({
+            "nodes": meta.get("nodes", 0),
+            "edges": meta.get("edges", 0),
+            "deleted_edges": meta.get("deleted_edges", 0)
+        })
+
+    # Cleanup memory-heavy intermediates
+    if temp_clean.exists():
+        temp_clean.unlink()
+
+    return {algo: str(path) for algo, path in formatted_paths.items()}
+
 
 def prepare_datasets(datasets_to_run, active_algos, logger) -> dict:
-    prepared_paths = {}
+    """Main orchestrator for preparing datasets."""
     required_algo_types = {config.get("type") for config in active_algos.values() if config.get("type")}
-
     log_file = DATASETS_DIR / "preprocessing_log.json"
+
     prep_log = {}
     if log_file.exists():
         with open(log_file, "r", encoding="utf-8") as f:
             prep_log = json.load(f)
 
+    prepared_paths = {}
     for ds in datasets_to_run:
         with logger.status(f"[bold cyan]Preprocessing Dataset: {ds.get('filename', 'N/A')} [/bold cyan]"):
-            short_name = ds.get("short_name", "N/A")
-            prepared_paths[short_name] = {}
+            prepared_paths[ds.get("short_name")] = _process_dataset_pipeline(ds, required_algo_types, logger, prep_log)
 
-            if short_name not in prep_log:
-                prep_log[short_name] = {}
-
-            raw_path = Path(download_dataset(ds.get("url"), ds.get("filename")))
-            is_dynamic = "dynamic" in sys.argv and short_name in DATASET_GROUP.get("dynamic", [])
-            stream_type = "FD" if is_dynamic else "IO"
-
-            temp_clean = raw_path.parent / f"{raw_path.stem}_temp_clean.txt"
-            topo_data = None
-
-            for algo_type in required_algo_types:
-                save_dir = raw_path.parent / algo_type.capitalize()
-                save_dir.mkdir(exist_ok=True)
-                formatted_path = save_dir / f"{algo_type}_{raw_path.stem}_{stream_type}.txt"
-
-                deleted = 0
-                p_del_val = 0.1 if stream_type == "FD" else 0.0
-
-                if not formatted_path.exists():
-                    logger.status(f"[bold cyan]Preprocessing {short_name} for {algo_type} ({stream_type})[/bold cyan]")
-
-                    if not temp_clean.exists():
-                        clean_and_write(str(raw_path), str(temp_clean), "{u}\t{v}\n")
-
-                    if topo_data is None:
-                        logger.status(f"[bold cyan]Calculating topology for {short_name}[/bold cyan]")
-                        topo_data = calculate_topology(str(temp_clean))
-
-                    num_nodes, total_edges, avg_deg, max_deg, density = topo_data
-
-                    if stream_type == "IO":
-                        if algo_type == "mosso":
-                            # Fast line-by-line format mapping
-                            with open(temp_clean, "r", encoding="utf-8") as fin, open(formatted_path, "w",
-                                                                                      encoding="utf-8") as fout:
-                                for line in fin:
-                                    fout.write(f"{line.strip()}\t1\n")
-                        else:
-                            shutil.copy(temp_clean, formatted_path)
-
-                    elif stream_type == "FD":
-                        if algo_type == "mosso":
-                            deleted = generate_dynamic_stream_graph(str(temp_clean), str(formatted_path),
-                                                                    p_delete=p_del_val)
-                        elif algo_type == "mags":
-                            deleted = generate_dynamic_batch_graph(str(temp_clean), str(formatted_path),
-                                                                   p_delete=p_del_val)
-
-                    # --- NEW LOGGING STRUCTURE ---
-                    if "dataset_metadata" not in prep_log[short_name]:
-                        prep_log[short_name]["dataset_metadata"] = {
-                            "stream_type": stream_type,
-                            "p_delete": p_del_val,
-                            "nodes": num_nodes,
-                            "edges": total_edges,
-                            "avg_degree": avg_deg,
-                            "max_degree": max_deg,
-                            "density": density
-                        }
-
-                    if "algorithms" not in prep_log[short_name]:
-                        prep_log[short_name]["algorithms"] = {}
-
-                    prep_log[short_name]["algorithms"][algo_type] = {
-                        "timestamp": datetime.now().isoformat(),
-                        "deleted_edges": deleted,
-                        "file_path": str(formatted_path)
-                    }
-
-                    with open(log_file, "w", encoding="utf-8") as f:
-                        json.dump(prep_log, f, indent=4)
-
-                else:
-                    meta_entry = prep_log.get(short_name, {}).get("dataset_metadata", {})
-                    algo_entry = prep_log.get(short_name, {}).get("algorithms", {}).get(algo_type, {})
-                    num_nodes = meta_entry.get("nodes", 0)
-                    total_edges = meta_entry.get("edges", 0)
-                    deleted = algo_entry.get("deleted_edges", 0)
-
-                # Overwrite Config in Memory
-                if "meta" not in ds: ds["meta"] = {}
-                # ... (rest of the code remains the same)
-                if "meta" not in DATASETS.get(short_name, {}): DATASETS[short_name]["meta"] = {}
-
-                for meta_target in [ds["meta"], DATASETS[short_name]["meta"]]:
-                    meta_target["nodes"] = num_nodes
-                    meta_target["edges"] = total_edges
-                    meta_target["deleted_edges"] = deleted
-
-                prepared_paths[short_name][algo_type] = str(formatted_path)
-
-            if temp_clean.exists():
-                temp_clean.unlink()
+            # Save progress incrementally after each dataset finishes
+            with open(log_file, "w", encoding="utf-8") as f:
+                json.dump(prep_log, f, indent=4)
 
     return prepared_paths

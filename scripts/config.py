@@ -120,83 +120,70 @@ DATASETS = {
     "PR": {
         "url": "http://konect.cc/files/download.tsv.reactome.tar.bz2",
         "filename": "out.reactome",
-        "meta": {}
+        "meta": {
+            "type": "Protein Interaction"
+        }
     },
     "CA": {
         "url": "https://snap.stanford.edu/data/as-caida20071105.txt.gz",
         "filename": "as-caida20071105.txt",
         "meta": {
-            "nodes": 26475,
-            "edges": 53381,
-            "size": "0.66 MB",
+            "type": "Autonomous System"
         },
     },
     "FB": {
         "url": "https://nrvis.com/download/data/dynamic/fb-wosn-friends.zip",
         "filename": "fb-wosn-friends.edges",
-        "meta": {}
+        "meta": {
+            "type": "Social"
+        }
     },
     "EN": {
         "url": "https://nrvis.com/download/data/dynamic/ia-enron-email-dynamic.zip",
         "filename": "email-enron.edges",
         "meta": {
-            "nodes": 86977,
-            "edges": 297456,
-            "size": "0.75 MB",
+            "type": "Email"
         },
     },
     "BK": {
         "url": "https://snap.stanford.edu/data/loc-brightkite_edges.txt.gz",
         "filename": "Brightkite_edges.txt",
         "meta": {
-            "nodes": 58228,
-            "edges": 214078,
-            "size": "2.59 MB",
-            "avg_degree": 7.35,
+            "type": "Location-based Social"
         },
     },
     "EA": {
         "url": "https://snap.stanford.edu/data/email-EuAll.txt.gz",
         "filename": "Email-EuAll.txt",
         "meta": {
-            "nodes": 265009,
-            "edges": 364481,
-            "size": "4.52 MB",
+            "type": "Email"
         },
     },
     "SL": {
         "url": "https://snap.stanford.edu/data/soc-Slashdot0902.txt.gz",
         "filename": "Slashdot0902.txt",
         "meta": {
-            "nodes": 82168,
-            "edges": 504230,
-            "size": "6.18 MB",
+            "type": "Social"
         },
     },
     "DB": {
         "url": "https://snap.stanford.edu/data/bigdata/communities/com-dblp.ungraph.txt.gz",
         "filename": "com-dblp.ungraph.txt",
         "meta": {
-            "nodes": 317080,
-            "edges": 1049866,
-            "size": "15.29 MB",
+            "type": "Collaboration"
         },
     },
     "AM": {
         "url": "https://snap.stanford.edu/data/amazon0601.txt.gz",
         "filename": "amazon0601.txt",
         "meta": {
-            "nodes": 403394,
-            "edges": 2443408,
-            "size": "35.09 MB",
+            "type": "Co-purchasing"
         },
     },
     "EU": {
         "url": "https://sparse.tamu.edu/MM/LAW/eu-2005.tar.gz",
         "filename": "eu-2005.mtx",
         "meta": {
-            "nodes": 862664,
-            "edges": 16138468,
             "type": "Hyperlink"
         },
     },
@@ -204,26 +191,20 @@ DATASETS = {
         "url": "https://snap.stanford.edu/data/bigdata/communities/com-youtube.ungraph.txt.gz",
         "filename": "com-youtube.ungraph.txt",
         "meta": {
-            "nodes": 1134890,
-            "edges": 2987624,
-            "size": "42.63 MB",
+            "type": "Social"
         },
     },
     "SK": {
         "url": "https://snap.stanford.edu/data/as-skitter.txt.gz",
         "filename": "as-skitter.txt",
         "meta": {
-            "nodes": 1696415,
-            "edges": 11095298,
-            "size": "163.36 MB",
+            "type": "Internet Infrastructure"
         },
     },
     "HW": {
         "url": "https://sparse.tamu.edu/MM/LAW/hollywood-2009.tar.gz",
         "filename": "hollywood-2009.mtx",
         "meta": {
-            "nodes": 1139905,
-            "edges": 113891327,
             "type": "Collaboration"
         },
     },
@@ -231,8 +212,6 @@ DATASETS = {
         "url": "https://sparse.tamu.edu/MM/LAW/uk-2002.tar.gz",
         "filename": "uk-2002.mtx",
         "meta": {
-            "nodes": 18483186,
-            "edges": 261787258,
             "type": "Hyperlink"
         },
     },
@@ -240,24 +219,25 @@ DATASETS = {
         "url": "https://snap.stanford.edu/data/bigdata/communities/com-lj.ungraph.txt.gz",
         "filename": "com-lj.ungraph.txt",
         "meta": {
-            "nodes": 3997962,
-            "edges": 34681189,
-            "size": "544.47 MB",
+            "type": "Social"
         },
     },
 }
 
 DATASET_GROUP = {
-    "small": [
-        "CA", "EN", "BK", "EA", "SL", "DB"
-    ],
-    "large": [
-        "AM", "YT", "SK", "LJ"
-    ],
-    "insertion": [
-        "PR", "EN", "FB", "EU", "HW", "UK",
-    ],
-    "dynamic": [
-        "DB", "YT", "SK",  "LJ"
-    ]
+    "small": ["CA", "PR", "EN", "BK", "EA", "SL"],   # < 600K edges (Fast debugging)
+    "medium": ["FB", "DB", "AM", "YT"],              # 600K - 3M edges (Standard benchmarks)
+    "large": ["SK", "EU", "LJ", "HW", "UK"],         # 10M+ edges (Scalability & Memory testing)
+
+    "insertion": [ "PR", "EN", "FB", "EU", "HW", "UK"],
+    "dynamic": ["DB", "YT", "SK", "LJ"],
+
+    "tuning": ["PR", "EN", "FB", "DB", "YT"],
+
+    "dense": ["PR", "FB", "EU", "HW"],               # High average degree / high clustering
+    "sparse": ["CA", "EA", "DB", "YT"],              # Low average degree / tree-like
+    "skewed": ["EN", "YT", "SK", "EU"],              # Massive max-degree hub nodes
+
+    "social": ["FB", "BK", "SL", "YT", "LJ"],
+    "web": ["EU", "UK", "SK"]
 }
