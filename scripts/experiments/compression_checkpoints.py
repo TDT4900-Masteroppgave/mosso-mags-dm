@@ -85,7 +85,7 @@ class CompressionCheckpoints(Experiment):
 
                     res = self.execute_runner(
                         algo_name=algo_name,
-                        dataset_short_name=short_name, # Keeps the dictionary lookup safe
+                        dataset_short_name=short_name,
                         params=params,
                         custom_path=partial_path,
                         custom_output_name=f"{short_name}_{cp}"
