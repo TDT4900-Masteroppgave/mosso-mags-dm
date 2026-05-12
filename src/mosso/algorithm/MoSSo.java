@@ -389,47 +389,45 @@ public class MoSSo extends SupernodeHelper {
             int y = srcnbd.getInt(i);
             if (getDegree(y) == 0) continue; // skip if y is an isolated node
 
-            double[] topScores = new double[b];
-            int[] topCandidates = new int[b];
-    
-            Arrays.fill(topScores, -Double.MAX_VALUE);
-            Arrays.fill(topCandidates, -1);
-            
-
             if (randInt(1, getDegree(y)) <= 1) {
+                if (randInt(1, 10) > escape || iteration < 1000) { 
+                    double[] topScores = new double[b];
+                    int[] topCandidates = new int[b];
+            
+                    Arrays.fill(topScores, -Double.MAX_VALUE);
+                    Arrays.fill(topCandidates, -1);
+                    
+                    // find topB candidates by similarity scores for candidates in the same minhash bucket as y
+                    for (int candidate : srcGrp.get(minHash[which].getInt(y))) { 
+                        if (candidate == y) continue;
 
-                // find topB candidates by similarity scores for candidates in the same minhash bucket as y
-                for (int candidate : srcGrp.get(minHash[which].getInt(y))) { 
-                    if (candidate == y) continue;
+                        double similarity_score = calculateMH(y, candidate);
 
-                    double similarity_score = calculateMH(y, candidate);
+                        if (similarity_score > topScores[b-1]) {
+                            topScores[b-1] = similarity_score;
+                            topCandidates[b-1] = candidate;
+                        }
 
-                    if (similarity_score > topScores[b-1]) {
-                        topScores[b-1] = similarity_score;
-                        topCandidates[b-1] = candidate;
-                    }
-
-                    // Bubble the new score up to keep the array sorted descending
-                    for (int j = b - 1; j > 0; j--) {
-                        if (topScores[j] > topScores[j - 1]) {
-                            // Swap scores
-                            double tempScore = topScores[j];
-                            topScores[j] = topScores[j - 1];
-                            topScores[j - 1] = tempScore;
-                            // Swap nodes
-                            int tempNode = topCandidates[j];
-                            topCandidates[j] = topCandidates[j - 1];
-                            topCandidates[j - 1] = tempNode;
-                        } else {
-                            break; // It's in the right place
+                        // Bubble the new score up to keep the array sorted descending
+                        for (int j = b - 1; j > 0; j--) {
+                            if (topScores[j] > topScores[j - 1]) {
+                                // Swap scores
+                                double tempScore = topScores[j];
+                                topScores[j] = topScores[j - 1];
+                                topScores[j - 1] = tempScore;
+                                // Swap nodes
+                                int tempNode = topCandidates[j];
+                                topCandidates[j] = topCandidates[j - 1];
+                                topCandidates[j - 1] = tempNode;
+                            } else {
+                                break; // It's in the right place
+                            }
                         }
                     }
 
-                }
-
-                
-                if ((randInt(1, 10) > escape || iteration < 1000) && topScores[0] > -Double.MAX_VALUE) { // if not corrective escape and there are at least one candidate
-                    tryBestSuperNode(y, topCandidates);
+                    if (topScores[0] > -Double.MAX_VALUE) {
+                        tryBestSuperNode(y, topCandidates);
+                    }
                 } else {
                     // only if the supernode containing nbd is not singleton
                     if(getSize(V.getInt(y)) > 1) tryNodalUpdate(y, newSupernode());
