@@ -11,18 +11,19 @@ from rich.console import Console
 from rich.panel import Panel
 
 from scripts.analysis.plotters import Plotter
-from scripts.analysis.plotters.base_plotter import get_analyzer
+from scripts.analysis.plotters.base_plotter import get_plotter
 from scripts.analysis.sessions import SessionInfo, load_session, scan_sessions
 from scripts.config import EXPERIMENT_DIR
 
 console = Console(highlight=False)
 
 EXPERIMENT_PLOTS = {
-    "benchmark": ["bar_chart"],
-    "ivb": ["ivb_bar"],
-    "cot": ["cot_line"],
-    "sweep": ["sweep_line"],
-    "bayesian": ["pareto_front", "bayesian_study", "marginal_utility", "reverse_engineer"]
+    "benchmark": ["bar_chart_time", "bar_chart_compression"],
+    "processing_speed": ["bar_chart_time_micros"],
+    "compression_checkpoints": ["line_chart_compression"],
+    "sweep": ["line_chart"],
+    "scalability": ["line_chart_scalability"],
+    "bayesian": ["pareto_front"],
 }
 
 _STYLE = questionary.Style([
@@ -162,7 +163,7 @@ def _pick_plot(session_type: str) -> type['Plotter'] | None:
 
     choices = []
     for pid in allowed_plot_ids:
-        plotter_cls = get_analyzer(pid)
+        plotter_cls = get_plotter(pid)
         if plotter_cls:
             choices.append(Choice(title=f"{plotter_cls.description}", value=plotter_cls))
 
@@ -188,106 +189,101 @@ def _confirm(msg: str, default: bool = False) -> bool:
 
 
 def main() -> None:
-    while True:
-        console.clear()
-        console.rule("[bold]MOSSO Analysis[/bold]")
-        console.print(f"[dim]Scanning {EXPERIMENT_DIR} ...[/dim]\n")
+    console.clear()
+    console.rule("[bold]MOSSO Analysis[/bold]")
+    console.print(f"[dim]Scanning {EXPERIMENT_DIR} ...[/dim]\n")
 
-        grouped = scan_sessions(Path(EXPERIMENT_DIR))
-        if not grouped:
-            console.print("[red]No experiment sessions found.[/red]")
-            sys.exit(1)
+    grouped = scan_sessions(Path(EXPERIMENT_DIR))
+    if not grouped:
+        console.print("[red]No experiment sessions found.[/red]")
+        sys.exit(1)
 
-        btype = _pick_type(grouped)
-        if not btype:
+    btype = _pick_type(grouped)
+    if not btype:
+        return
+
+    session = _pick_session(grouped[btype])
+    if not session:
+        return
+
+    df, meta = load_session(session.path)
+    if df.empty:
+        console.print("[red]Session has empty results table.[/red]")
+        return
+
+    if "algorithm" not in df.columns:
+        console.print("[red]Results df missing 'algorithm' column.[/red]")
+        return
+
+    available_algos: list[str] = [str(x) for x in sorted(df["algorithm"].dropna().unique())]
+    available_datasets: list[str] = (
+        [str(x) for x in sorted(df["dataset"].dropna().unique())]
+        if "dataset" in df.columns else []
+    )
+
+
+    plot_df = df.copy()
+    algos = _pick_algos(available_algos)
+    if not algos:
+        return
+
+    time_label = "Time (seconds)"
+    datasets = None
+    aggregate = "per_dataset"
+    normalize: str | None = None
+
+    if available_datasets:
+        datasets = _pick_datasets(available_datasets)
+        if not datasets:
             return
-
-        session = _pick_session(grouped[btype])
-        if not session:
+        aggregate = _pick_aggregation(len(datasets))
+        if aggregate is None:
             return
+        normalize = _pick_normalization()
 
-        df, meta = load_session(session.path)
-        if df.empty:
-            console.print("[red]Session has empty results table.[/red]")
-            return
+        if normalize and normalize != "none":
+            sizes = _get_sizes(meta, normalize)
+            plot_df["time"] = plot_df.apply(
+                lambda row: row["time"] / sizes.get(row["dataset"], 1) if sizes.get(row["dataset"], 0) > 0 else row["time"],
+                axis=1
+            )
+            time_label = f"Time per {normalize} (s)"
 
-        if "algorithm" not in df.columns:
-            console.print("[red]Results df missing 'algorithm' column.[/red]")
-            return
+    plotter_cls = _pick_plot(session.type)
+    if not plotter_cls:
+        console.print("[yellow]No plot to generate selected.[/yellow]")
+        return
 
-        available_algos: list[str] = [str(x) for x in sorted(df["algorithm"].dropna().unique())]
-        available_datasets: list[str] = (
-            [str(x) for x in sorted(df["dataset"].dropna().unique())]
-            if "dataset" in df.columns else []
-        )
+    # Print a beautiful summary panel right before generating
+    summary_text = (
+        f"[bold]Session:[/bold] {_fmt_ts(session.timestamp)}\n"
+        f"[bold]Algorithms:[/bold] {', '.join(algos)}\n"
+        f"[bold]Datasets:[/bold] {', '.join(datasets) if datasets else 'All'}\n"
+        f"[bold]Aggregation:[/bold] {aggregate}\n"
+        f"[bold]Normalization:[/bold] {normalize if normalize else 'None'}\n"
+        f"[bold]Plot Type:[/bold] {plotter_cls.description}"
+    )
+    console.print(Panel(summary_text, title="Summary", border_style="cyan"))
 
+    out_dir = session.path / "analysis"
 
-        plot_df = df.copy()
-        algos = _pick_algos(available_algos)
-        if not algos:
-            return
+    options = {
+        "datasets": datasets,
+        "aggregate": aggregate,
+        "time_label": time_label,
+        "normalize": normalize,
+        "db_path": session.path / "optuna_study.db",
+    }
 
-        time_label = "Time (seconds)"
-        datasets = None
-        aggregate = "per_dataset"
-        normalize: str | None = None
+    if "param_name" in df.columns:
+        options["param_name"] = str(df["param_name"].iloc[0])
 
-        if available_datasets:
-            datasets = _pick_datasets(available_datasets)
-            if not datasets:
-                return
-            aggregate = _pick_aggregation(len(datasets))
-            if aggregate is None:
-                return
-            normalize = _pick_normalization()
-
-            if normalize and normalize != "none":
-                sizes = _get_sizes(meta, normalize)
-                plot_df["time"] = plot_df.apply(
-                    lambda row: row["time"] / sizes.get(row["dataset"], 1) if sizes.get(row["dataset"], 0) > 0 else row["time"],
-                    axis=1
-                )
-                time_label = f"Time per {normalize} (s)"
-
-        plotter_cls = _pick_plot(session.type)
-        if not plotter_cls:
-            console.print("[yellow]No plot to generate selected.[/yellow]")
-            return
-
-        # Print a beautiful summary panel right before generating
-        summary_text = (
-            f"[bold]Session:[/bold] {_fmt_ts(session.timestamp)}\n"
-            f"[bold]Algorithms:[/bold] {', '.join(algos)}\n"
-            f"[bold]Datasets:[/bold] {', '.join(datasets) if datasets else 'All'}\n"
-            f"[bold]Aggregation:[/bold] {aggregate}\n"
-            f"[bold]Normalization:[/bold] {normalize if normalize else 'None'}\n"
-            f"[bold]Plot Type:[/bold] {plotter_cls.description}"
-        )
-        console.print(Panel(summary_text, title="Summary", border_style="cyan"))
-
-        out_dir = session.path / "analysis"
-
-        options = {
-            "datasets": datasets,
-            "aggregate": aggregate,
-            "time_label": time_label,
-            "normalize": normalize,
-            "db_path": session.path / "optuna_study.db",
-        }
-
-        if "param_name" in df.columns:
-            options["param_name"] = str(df["param_name"].iloc[0])
-
-        try:
-            out_paths = plotter_cls().process(plot_df, meta, algos, out_dir, options)
-            for path in out_paths:
-                console.print(f"[green]✓[/green] Saved: [bold]{path}[/bold]")
-        except Exception as e:
-            console.print(f"[red]✗ Analysis failed:[/red] {e}\n")
-
-        if not _confirm("Generate another plot from this session?", default=False):
-            break
-        console.print("-" * 40) # Small separator if they loop back
+    try:
+        out_paths = plotter_cls().process(plot_df, algos, out_dir, options)
+        for path in out_paths:
+            console.print(f"[green]✓[/green] Saved: [bold]{path}[/bold]")
+    except Exception as e:
+        console.print(f"[red]✗ Analysis failed:[/red] {e}\n")
 
 if __name__ == "__main__":
     main()

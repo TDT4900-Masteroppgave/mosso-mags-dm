@@ -1,20 +1,42 @@
-from abc import ABC, abstractmethod
+import pandas as pd
+import seaborn as sns
 from pathlib import Path
 from datetime import datetime
-import pandas as pd
-from scripts.config import PARAM_CONFIG # <--- ADD THIS IMPORT
+from abc import ABC, abstractmethod
+from scripts.config import PARAM_CONFIG
 
-ANALYZERS: dict[str, type['Plotter']] = {}
+PLOTTERS: dict[str, type['Plotter']] = {}
 
 class Plotter(ABC):
-    analyzer_id: str = ""
+    plotter_id: str = ""
     description: str = ""
 
-    def __init__(self):
-        self.generates_plots = False
-        self.generates_data = False
+    @staticmethod
+    def set_chart_theme():
+        # Grayscale colors for fallback
+        colors = ["#FFFFFF", "#DDDDDD", "#888888", "#000000"]
 
-    def process(self, df: pd.DataFrame, meta: dict, algos: list[str], out_dir: Path, options: dict) -> list[Path]:
+        sns.set_theme(style="ticks", rc={
+            "axes.edgecolor": "black",
+            "axes.linewidth": 1.2,
+            "axes.facecolor": "white",
+            "figure.facecolor": "white",
+            "grid.color": "white",
+            "font.family": "serif",
+            "font.serif": ["Times New Roman", "Computer Modern Roman", "serif"],
+            "axes.labelsize": 14,
+            "xtick.labelsize": 12,
+            "ytick.labelsize": 12,
+            "xtick.direction": "in",
+            "ytick.direction": "in",
+            "xtick.top": False,
+            "ytick.right": True,
+            "legend.frameon": False,
+            "legend.fontsize": 12
+        })
+        sns.set_palette(sns.color_palette(colors))
+
+    def process(self, df: pd.DataFrame, algos: list[str], out_dir: Path, options: dict) -> list[Path]:
         opts = options or {}
         datasets = opts.get("datasets")
         aggregate = opts.get("aggregate", "per_dataset")
@@ -28,30 +50,42 @@ class Plotter(ABC):
         out_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # 1. Start with the core numeric metrics we always want to average
-        numeric_cols = ["time", "ratio"]
-        if "time_micros" in sub.columns: numeric_cols.append("time_micros")
+        group_cols = ["dataset", "algorithm"]
+        optional_group_cols = ["change_ratio", "param", "trial", "run", "edges_processed", "edges_evaluated",
+                               "power_of_2", "is_streaming"]
+        for col in optional_group_cols:
+            if col in sub.columns:
+                group_cols.append(col)
 
-        # 2. Extract hyperparameters from the dataframe if they exist
-        # We add them to numeric_cols so their values are preserved/averaged during the groupby
+        numeric_cols = []
+        possible_metrics = ["time", "ratio", "time_micros", "accumulated_time_sec"]
+        for col in possible_metrics:
+            if col in sub.columns:
+                numeric_cols.append(col)
+
+        # Handle algorithm parameters from config
         param_keys = [k for k in PARAM_CONFIG.keys() if k in sub.columns]
         for p in param_keys:
-            # Ensure they are numeric so .mean() doesn't drop them
             sub[p] = pd.to_numeric(sub[p], errors='coerce')
-            numeric_cols.append(p)
+            if p not in group_cols:
+                numeric_cols.append(p)
 
-        group_cols = ["dataset", "algorithm"]
-        if "change_ratio" in sub.columns: group_cols.append("change_ratio")
-        if "param" in sub.columns: group_cols.append("param")
-        if "trial" in sub.columns: group_cols.append("trial")
+        # Ensure we don't try to calculate the mean of a column we are grouping by
+        numeric_cols = [c for c in numeric_cols if c not in group_cols]
 
-        # Now when we groupby, the parameters are included in the .mean() calculation
-        grouped_runs = sub.groupby(group_cols, as_index=False)[numeric_cols].mean()
+        if numeric_cols:
+            grouped_runs = sub.groupby(group_cols, as_index=False)[numeric_cols].mean()
+        else:
+            grouped_runs = sub.drop_duplicates(subset=group_cols)
+
         grouped_runs["algorithm"] = pd.Categorical(grouped_runs["algorithm"], categories=algos, ordered=True)
 
         if aggregate == "average":
             avg_cols = [c for c in group_cols if c != "dataset"]
-            final_agg = grouped_runs.groupby(avg_cols, as_index=False)[numeric_cols].mean().sort_values(avg_cols)
+            if numeric_cols:
+                final_agg = grouped_runs.groupby(avg_cols, as_index=False)[numeric_cols].mean().sort_values(avg_cols)
+            else:
+                final_agg = grouped_runs.sort_values(avg_cols)
             context = "average"
         else:
             final_agg = grouped_runs.sort_values(group_cols)
@@ -64,9 +98,9 @@ class Plotter(ABC):
         ...
 
 def register(cls: type['Plotter']) -> type['Plotter']:
-    if cls.analyzer_id:
-        ANALYZERS[cls.analyzer_id] = cls
+    if cls.plotter_id:
+        PLOTTERS[cls.plotter_id] = cls
     return cls
 
-def get_analyzer(analyzer_id: str) -> type[Plotter] | None:
-    return ANALYZERS.get(analyzer_id)
+def get_plotter(plotter_id: str) -> type[Plotter] | None:
+    return PLOTTERS.get(plotter_id)
