@@ -22,8 +22,7 @@ class ParameterSweep(Experiment):
 
     def process(self) -> list[dict]:
         metrics = []
-        for i, ds in enumerate(self.datasets_to_run, 1):
-            short_name, dataset_path = self._get_dataset(ds)
+        for i, short_name in enumerate(self.datasets.keys(), 1):
             self._print_status(i, short_name)
 
             for val in self.sweep_values:
@@ -37,7 +36,12 @@ class ParameterSweep(Experiment):
                     params = self._resolve_algo_params(algo_config)
                     params[self.args.param] = str(val)
 
-                    res = self.execute_runner(algo_name, short_name, params)
+                    algo_type = algo_config.get("type", None)
+                    dataset_path = self._get_dataset_path(short_name, algo_type)
+                    if not dataset_path:
+                        continue
+
+                    res = self.execute_runner(dataset_path, short_name, algo_name,  params)
                     if res is None:
                         continue
 

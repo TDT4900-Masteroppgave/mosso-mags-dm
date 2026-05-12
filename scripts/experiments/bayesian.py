@@ -2,7 +2,7 @@ import optuna
 import pandas as pd
 from rich.panel import Panel
 
-from scripts.config import PARAM_CONFIG
+from scripts.config import PARAM_CONFIG, DATASETS
 from scripts.experiments.base_experiment import Experiment
 
 class Bayesian(Experiment):
@@ -55,10 +55,12 @@ class Bayesian(Experiment):
                 trial_times = []
                 trial_ratios = []
 
-                for ds in self.datasets_to_run:
-                    short_name, dataset_path = self._get_dataset(ds)
-                    res = self.execute_runner(algo_name, short_name, params)
-
+                for _, short_name in enumerate(self.datasets.keys(), 1):
+                    algo_type = algo_config.get("type", None)
+                    dataset_path = self._get_dataset_path(short_name, algo_type)
+                    if not dataset_path:
+                        continue
+                    res = self.execute_runner(dataset_path, short_name, algo_name, params)
                     if not res:
                         raise optuna.exceptions.TrialPruned()
 
@@ -77,7 +79,7 @@ class Bayesian(Experiment):
                             **params
                         })
 
-                    edges = ds.get("meta", {}).get("edges", 1)
+                    edges = DATASETS.get(short_name, {}).get("meta", {}).get("edges", 0)
                     trial_times.append(t_avg / edges)
                     trial_ratios.append(r_avg)
 

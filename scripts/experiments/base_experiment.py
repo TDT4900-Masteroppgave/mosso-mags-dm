@@ -15,7 +15,6 @@ from rich.table import Table
 
 import scripts.db as db
 from scripts.config import ALGORITHMS, DATASET_GROUP, DATASETS, EXPERIMENT_DIR, PARAM_CONFIG
-from scripts.datasets import download_dataset
 from scripts.datasets import prepare_datasets
 from scripts.runners.base_runner import get_runner
 from scripts.utils import (
@@ -37,7 +36,7 @@ class Experiment(ABC):
 
         self.logger = Logger(str(self.session_dir / "execution.log"))
         self.db_conn = None
-        self.prepared_dataset = {}
+        self.datasets = {}
 
         missing_algos = [name for name in self.args.algorithm if name not in ALGORITHMS]
         if missing_algos:
@@ -81,10 +80,9 @@ class Experiment(ABC):
             self.print_parameters()
 
             self.logger.rule("[bold]Preprocessing[/bold]")
-            self.prepared_dataset = prepare_datasets(
+            self.datasets = prepare_datasets(
                 self.datasets_to_run, self.active_algos, self.logger
             )
-            self.post_preprocessing()
             self.print_dataset()
 
             self._build_algorithms()
@@ -106,20 +104,9 @@ class Experiment(ABC):
             self.logger.print(f"[dim]Total Benchmark Time:[/dim] {elapsed:.2f} seconds")
             self.logger.print(f"[dim]Output:[/dim] {self.session_dir}")
 
-    def post_preprocessing(self):
-        """Hook for subclasses to manipulate datasets before building/processing. Empty by default."""
-        pass
-
-    @staticmethod
-    def _get_dataset(ds: pd.DataFrame) -> tuple[str, str]:
-        path = download_dataset(ds.get("url"), ds.get("filename"))
-        if not path:
-            raise RuntimeError(f"Failed to download {ds.get('filename')}.")
-        return ds.get("short_name", "N/A"), path
-
     def _print_status(self, i: int, short_name: str) -> None:
         run_text = f"({self.args.runs} run{'s' if self.args.runs != 1 else ''})"
-        self.logger.print(f"[bold cyan][{i}/{len(self.datasets_to_run)}][/bold cyan] {short_name} {run_text}")
+        self.logger.print(f"[bold cyan][{i}/{len(self.datasets)}][/bold cyan] {short_name} {run_text}")
 
     def _handle_results(self) -> None:
         if not self.results:
@@ -163,22 +150,22 @@ class Experiment(ABC):
                 config_val if config_val is not None else (cli_val if cli_val is not None else default_val))
         return params
 
-    def execute_runner(self, algo_name: str, dataset_short_name: str, params: dict, custom_path: str = None,
-                       custom_output_name: str = None):
+    def _get_dataset_path(self, short_name: str, algo_type: str) -> str | None:
+        dataset_path = self.datasets[short_name][algo_type]
+        if not dataset_path:
+            self.logger.warning(f"[!] Dataset not found for {short_name}. Skipping.")
+            return None
+        return dataset_path
+
+    def execute_runner(self, dataset_path: str, short_name: str, algo_name: str, params: dict):
         runner = get_runner(algo_name, self.logger, str(self.session_dir))
-
-        algo_type = self.active_algos[algo_name].get("type")
-        preprocessed_path = custom_path if custom_path else self.prepared_dataset[dataset_short_name][algo_type]
-
         if not runner.binary_exists():
             self.logger.warning(f"[!] Binary not found for {algo_name}. Skipping.")
             return None
 
-        run_id = custom_output_name if custom_output_name else dataset_short_name
-
         with self.logger.status(f"[bold blue]Running {algo_name} | params: {params} [/bold blue]"):
-            output_name = f"{algo_name}_{run_id}_{self.timestamp}"
-            res = runner.run_multiple(preprocessed_path, output_name, self.args.runs, list(params.values()))
+            output_name = f"{algo_name}_{short_name}_{self.timestamp}"
+            res = runner.run_multiple(dataset_path, output_name, self.args.runs, list(params.values()))
 
         t_avg, r_avg, t_list, r_list = res
         if t_avg is None or r_avg is None:
@@ -210,12 +197,13 @@ class Experiment(ABC):
             }
 
         datasets_meta = []
-        for ds in self.datasets_to_run:
+        for short_name in self.datasets.keys():
             ds_info = {
-                "short_name": ds.get("short_name", "N/A"),
-                "filename": ds.get("filename", "N/A")
+                "short_name": short_name,
+                "filename": DATASETS.get(short_name, {}).get("filename", "N/A")
             }
-            ds_info.update(ds.get("meta", {}))
+            meta = DATASETS.get(short_name, {}).get("meta", {})
+            ds_info.update(meta)
             datasets_meta.append(ds_info)
 
         db.write_metadata(self.db_conn, {
@@ -273,7 +261,7 @@ class Experiment(ABC):
         return args
 
     def print_dataset(self):
-        num_datasets = len(self.datasets_to_run)
+        num_datasets = len(self.datasets)
         self.logger.print(f"\n[bold]Datasets[/bold] ({num_datasets})")
 
         ds_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
@@ -282,7 +270,8 @@ class Experiment(ABC):
         ds_table.add_column("Nodes", justify="right")
         ds_table.add_column("Edges", justify="right")
 
-        for ds in self.datasets_to_run:
+        for short_name in self.datasets.keys():
+            ds = DATASETS.get(short_name, {})
             meta = ds.get("meta", {})
             nodes = meta.get("nodes", "N/A")
             edges = meta.get("edges", "N/A")
@@ -292,7 +281,7 @@ class Experiment(ABC):
             disp_edges = f"{edges:,}" if isinstance(edges, int) else str(edges)
 
             ds_table.add_row(
-                ds.get("short_name", "N/A"),
+                short_name,
                 ds_type,
                 disp_nodes,
                 disp_edges,
