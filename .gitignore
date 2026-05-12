@@ -36,6 +36,7 @@ Thumbs.db
 output/
 datasets/
 external/
+algorithms/
 
 # Python
 .venv

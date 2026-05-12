@@ -3,7 +3,7 @@ from pathlib import Path
 OUTPUT_DIR = Path("output")
 DATASETS_DIR = Path("datasets")
 EXPERIMENT_DIR = OUTPUT_DIR / "experiments"
-ALGORITHMS_DIR = OUTPUT_DIR / "algorithms"
+ALGORITHMS_DIR = Path("algorithms")
 
 BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
