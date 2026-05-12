@@ -64,7 +64,7 @@ class Bayesian(Experiment):
                     if not res:
                         raise optuna.exceptions.TrialPruned()
 
-                    t_avg, r_avg, t_list, r_list = res
+                    t_avg, r_avg, t_list, r_list, _ = res
                     trial.set_user_attr(f"raw_time_{short_name}", f"{t_avg:.4f}s")
                     trial.set_user_attr(f"ratio_{short_name}", f"{r_avg:.5f}")
 

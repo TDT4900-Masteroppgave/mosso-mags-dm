@@ -27,7 +27,7 @@ class ProcessingTime(Experiment):
                 if res is None:
                     continue
 
-                _, _, t_list, r_list = res
+                _, _, t_list, r_list, _ = res
                 is_inc = ALGORITHMS.get(algo_name, {}).get("type", "") == "mosso"
 
                 for run, (t, r) in enumerate(zip(t_list, r_list)):

@@ -1,4 +1,3 @@
-# scripts/experiments/compression_checkpoints.py
 from pathlib import Path
 import pandas as pd
 from rich.table import Table
@@ -38,14 +37,9 @@ class CompressionCheckpoints(Experiment):
 
     def process(self) -> list[dict]:
         metrics = []
-        # Ensure checkpoints is a list of floats (defaulting to paper's 10% steps if missing)
-        checkpoints = getattr(self.args, "checkpoints", [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        if isinstance(checkpoints, str):
-            checkpoints = [float(x.strip()) for x in checkpoints.split(",")]
-
+        checkpoints = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         for i, short_name in enumerate(self.datasets, 1):
             self._print_status(i, short_name)
-
             total_edges = DATASETS.get(short_name, {}).get("meta", {}).get("edges", 1)
 
             for algo_name, algo_config in self.active_algos.items():
@@ -56,28 +50,63 @@ class CompressionCheckpoints(Experiment):
                 if not dataset_path:
                     continue
 
-                for cp in checkpoints:
-                    fraction = float(cp)
-                    max_edges = int(total_edges * fraction)
+                if algo_type == "mosso":
+                    self.logger.print(f"[dim cyan]Evaluating {algo_name} continuously (Streaming)[/dim cyan]")
 
-                    self.logger.print(f"  [dim cyan]Evaluating {algo_name} at {fraction*100:.0f}% ({max_edges} edges)...[/dim cyan]")
+                    new_ds_name = f"{short_name}_streaming_full"
+                    res = self.execute_runner(dataset_path, new_ds_name, algo_name, params)
+                    if res is None: continue
 
-                    # Quickly copy the top N lines of the preprocessed file
-                    partial_path = create_slice(dataset_path, max_edges, fraction)
-                    new_ds_name = f"{short_name}_cp{fraction}"
-                    res = self.execute_runner(partial_path, new_ds_name, algo_name,  params)
-                    if res is None:
-                        continue
+                    t_avg, r_avg, _, _, intermediates = res
 
-                    t_avg, r_avg, _, _ = res
+                    for pt in intermediates:
+                        fraction = pt["edges"] / total_edges
+
+                        if fraction >= 1.0:
+                            continue
+
+                        metrics.append({
+                            "dataset": short_name,
+                            "algorithm": algo_name,
+                            "change_ratio": fraction,
+                            "time": pt["time"],
+                            "ratio": pt["ratio"],
+                            "is_streaming": True,
+                            **params
+                        })
+
                     metrics.append({
                         "dataset": short_name,
                         "algorithm": algo_name,
-                        "change_ratio": fraction,
+                        "change_ratio": 1.0,
                         "time": t_avg,
                         "ratio": r_avg,
+                        "is_streaming": True,
                         **params
                     })
+                else:
+                    for cp in checkpoints:
+                        fraction = float(cp)
+                        max_edges = int(total_edges * fraction)
+
+                        self.logger.print(f"[dim cyan]Evaluating {algo_name} at {fraction*100:.0f}% ({max_edges} edges)[/dim cyan]")
+
+                        partial_path = create_slice(dataset_path, max_edges, fraction)
+                        new_ds_name = f"{short_name}_cp{fraction}"
+                        res = self.execute_runner(partial_path, new_ds_name, algo_name,  params)
+                        if res is None:
+                            continue
+
+                        t_avg, r_avg, _, _, _ = res
+                        metrics.append({
+                            "dataset": short_name,
+                            "algorithm": algo_name,
+                            "change_ratio": fraction,
+                            "time": t_avg,
+                            "ratio": r_avg,
+                            "is_streaming": False,
+                            **params
+                        })
         return metrics
 
     def output(self, df: pd.DataFrame):
@@ -95,7 +124,7 @@ class CompressionCheckpoints(Experiment):
             table.add_row(
                 str(row['dataset']),
                 str(row['algorithm']),
-                f"{float(row['change_ratio']) * 100:.0f}%",
+                f"{float(row['change_ratio']) * 100:.1f}%",
                 ratio_val
             )
 

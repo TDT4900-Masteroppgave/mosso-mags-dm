@@ -12,6 +12,7 @@ class MossoRunner(AlgorithmRunner):
     edge_format_string = "{u}\t{v}\t1\n"
     _TIME_REGEX = re.compile(r"Execution time:\s*([\d.]+)s", re.IGNORECASE)
     _RATIO_REGEX = re.compile(r"Expected Compression Ratio:\s*([a-zA-Z\d.]+)", re.IGNORECASE)
+    _INTERMEDIATE_REGEX = re.compile(r"(\d+)\s*:\s*Elapsed time\s*:\s*([\d.]+)\s*:\s*ratio\s*:\s*([\d.]+)", re.IGNORECASE)
 
     def __init__(self, algo_name: str, config: dict, logger, session_dir: str):
         super().__init__(algo_name, config, logger, session_dir)
@@ -38,14 +39,20 @@ class MossoRunner(AlgorithmRunner):
 
         return ["java", "-cp", classpath, "mosso.Run", dataset_path, java_path, "mosso"] + parameters
 
-    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
+    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float], list[dict]]:
         time_m = self._TIME_REGEX.search(stdout)
         ratio_m = self._RATIO_REGEX.search(stdout)
 
         if not time_m: self.logger.warning(f"[!] [{self.algo_name}] Could not parse execution time.")
         if not ratio_m: self.logger.warning(f"[!] [{self.algo_name}] Could not parse compression ratio.")
 
+        intermediates = []
+        for match in self._INTERMEDIATE_REGEX.finditer(stdout):
+            edges, t, r = match.groups()
+            intermediates.append({"edges": int(edges), "time": float(t), "ratio": float(r)})
+
         return (
             float(time_m.group(1)) if time_m else None,
             float(ratio_m.group(1)) if ratio_m else None,
+            intermediates
         )

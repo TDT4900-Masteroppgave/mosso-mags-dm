@@ -167,7 +167,7 @@ class Experiment(ABC):
             output_name = f"{algo_name}_{short_name}_{self.timestamp}"
             res = runner.run_multiple(dataset_path, output_name, self.args.runs, list(params.values()))
 
-        t_avg, r_avg, t_list, r_list = res
+        t_avg, r_avg, t_list, r_list, intermediates = res
         if t_avg is None or r_avg is None:
             self.logger.warning(f"=> {algo_name} failed to run with params: {params}")
             return None

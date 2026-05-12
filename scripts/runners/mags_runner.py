@@ -79,7 +79,7 @@ class MagsRunner(AlgorithmRunner):
         self._execute_cmd(["cmake", "--build", "."], cwd=build_dir, log_msg=f"[{self.algo_name}] Building")
         _move_compiled_binary(build_dir, self.get_binary_path())
 
-    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
+    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float], list[dict]]:
         r_match = self._READ_REGEX.search(stdout)
         m_match = self._MERGE_REGEX.search(stdout)
         e_match = self._ENCODING_REGEX.search(stdout)
@@ -94,7 +94,7 @@ class MagsRunner(AlgorithmRunner):
         if ratio_val is None: self.logger.warning(
             f"[!] [{self.algo_name}] Could not parse compression ratio from output.")
 
-        return time_val, ratio_val
+        return time_val, ratio_val, []
 
     def build_command(self, dataset_path: str, graph_output_path: str, parameters: list[str]) -> list[str]:
         return [str(self.get_binary_path().absolute()), dataset_path] + parameters

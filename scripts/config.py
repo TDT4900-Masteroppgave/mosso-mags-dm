@@ -10,7 +10,7 @@ BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 PARAM_CONFIG = {
     "c": {"description": "sample number", "default": 120, "bounds": (10, 240), "step": 10, "type": int},
     "e": {"description": "escape", "default": 3, "bounds": (1, 5), "step": 1, "type": int},
-    "interval": {"description": "interval", "default": 10000, "type": int},
+    "interval": {"description": "interval", "default": 1000, "type": int},
     "b": {"description": "top candidates", "default": 5, "bounds": (1, 10), "step": 1, "type": int},
     "h": {"description": "hashes", "default": 4, "bounds": (5, 50), "step": 5, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},

@@ -28,7 +28,7 @@ class Benchmark(Experiment):
                 if res is None:
                     continue
 
-                _, _, t_list, r_list = res
+                _, _, t_list, r_list, _ = res
 
                 for run, (t, r) in enumerate(zip(t_list, r_list)):
                     metrics.append({

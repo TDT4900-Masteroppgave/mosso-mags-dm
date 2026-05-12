@@ -65,7 +65,7 @@ class Scalability(Experiment):
                     if res is None:
                         continue
 
-                    t_avg, _, _, _ = res
+                    t_avg, _, _, _, _ = res
                     metrics.append({
                         "dataset": short_name,
                         "algorithm": algo_name,

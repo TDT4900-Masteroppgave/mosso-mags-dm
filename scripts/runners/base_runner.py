@@ -35,7 +35,7 @@ class AlgorithmRunner(ABC):
         pass
 
     @abstractmethod
-    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float]]:
+    def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float], list[dict]]:
         pass
 
     def _execute_cmd(self, cmd: list[str], cwd=None, env=None, log_msg: Optional[str] = None):
@@ -72,14 +72,14 @@ class AlgorithmRunner(ABC):
             raise RuntimeError(f"Compilation failed for {self.algo_name}.") from e
 
     def run_single(self, format_dataset_path: str, output_name: str, parameters: list) -> tuple[
-        Optional[float], Optional[float]]:
+        Optional[float], Optional[float], list[dict]]:
         graph_output_path = self.session_dir / output_name
         cmd = self.build_command(format_dataset_path, str(graph_output_path), parameters)
         self.logger.debug(f"[{self.algo_name}] Running command: {' '.join(cmd)}")
 
         try:
             result = self._execute_cmd(cmd)
-            parsed_time, parsed_ratio = self.parse_output(result.stdout)
+            parsed_time, parsed_ratio, intermediates = self.parse_output(result.stdout)
 
             log_file = self.run_log_dir / f"{output_name}.log"
             log_file.write_text(
@@ -92,28 +92,47 @@ class AlgorithmRunner(ABC):
             if graph_output_path.exists():
                 graph_output_path.unlink(missing_ok=True)
 
-            return parsed_time, parsed_ratio
+            return parsed_time, parsed_ratio, intermediates
 
         except subprocess.CalledProcessError as e:
             self.logger.error(f"[!] Execution crashed for {output_name}: {e}\nSTDERR:\n{e.stderr}")
         except Exception as e:
             self.logger.error(f"[!] Unexpected error for {output_name}: {e}")
-        return None, None
+        return None, None, []
 
     def run_multiple(self, dataset_path: str, output_name: str, n_runs: int, parameters: list) \
-            -> tuple[Optional[float], Optional[float], list, list]:
-        times, ratios = [], []
+            -> tuple[Optional[float], Optional[float], list, list, list]:
+        times, ratios, all_intermediates = [], [], []
 
         for i in range(n_runs):
             self.logger.debug(f"Iter {i + 1}/{n_runs} for {output_name}")
-            t, r = self.run_single(dataset_path, f"{output_name}_run{i + 1}", parameters)
+            t, r, intermediates = self.run_single(dataset_path, f"{output_name}_run{i + 1}", parameters)
             if t is not None and r is not None:
                 times.append(t)
                 ratios.append(r)
+                if intermediates: all_intermediates.append(intermediates)
+
+        final_intermediates = []
+        if all_intermediates:
+            num_intervals = len(all_intermediates[0])
+
+            for i in range(num_intervals):
+                try:
+                    avg_time = sum(run[i]["time"] for run in all_intermediates) / len(all_intermediates)
+                    avg_ratio = sum(run[i]["ratio"] for run in all_intermediates) / len(all_intermediates)
+
+                    final_intermediates.append({
+                        "edges": all_intermediates[0][i]["edges"],
+                        "time": avg_time,
+                        "ratio": avg_ratio
+                    })
+                except IndexError:
+                    self.logger.warning(f"Run data misalignment at interval {i}. Stopping intermediate averaging early.")
+                    break
 
         avg_t = sum(times) / len(times) if times else None
         avg_r = sum(ratios) / len(ratios) if ratios else None
-        return avg_t, avg_r, times, ratios
+        return avg_t, avg_r, times, ratios, final_intermediates
 
 
 def get_runner(algo_name: str, logger, session_dir: str) -> AlgorithmRunner:
