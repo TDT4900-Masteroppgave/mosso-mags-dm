@@ -229,8 +229,12 @@ DATASET_GROUP = {
     "medium": ["FB", "DB", "AM", "YT"],              # 600K - 3M edges (Standard benchmarks)
     "large": ["SK", "EU", "LJ", "HW", "UK"],         # 10M+ edges (Scalability & Memory testing)
 
-    "insertion": [ "PR", "EN", "FB", "EU", "HW", "UK"],
-    "dynamic": ["DB", "YT", "SK", "LJ"],
+    "insertion": [ "PR", "EN", "FB", "EU",
+                   #"HW", "UK"
+                   ],
+    "dynamic": ["DB", "YT", "SK",
+                #"LJ"
+                ],
 
     "tuning": ["PR", "EN", "FB", "DB", "YT"],
 
