@@ -1,1 +1,1 @@
-./run.sh bayesian --jobs -1 --trials 100 --group tuning --algorithm kdd20-mosso cap ds
+./run.sh bayesian --jobs -1 --trials 100 --runs 3 --group tuning --algorithm kdd20-mosso cap ds
