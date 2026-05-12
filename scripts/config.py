@@ -21,8 +21,6 @@ PARAM_CONFIG = {
     "p": {"description": "number of threads", "default": 1, "bounds": (1, 40), "type": int},
 }
 
-STREAM_TYPES = ["IO", "FD"]  # Insertion-Only, Fully-Dynamic
-
 ALGORITHMS = {
     "local": {
         "target_dir": ".",
@@ -238,7 +236,7 @@ DATASET_GROUP = {
 
     "tuning": ["PR", "EN", "FB", "DB", "YT"],
 
-    "dense": ["PR", "FB", "EU", "HW"],               # High average degree / high clustering
+    "dense": ["PR", "FB", "EU", "HW"],               # High-average degree / high clustering
     "sparse": ["CA", "EA", "DB", "YT"],              # Low average degree / tree-like
     "skewed": ["EN", "YT", "SK", "EU"],              # Massive max-degree hub nodes
 
