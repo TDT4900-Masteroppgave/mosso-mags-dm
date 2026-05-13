@@ -241,5 +241,10 @@ DATASET_GROUP = {
     "skewed": ["EN", "YT", "SK", "EU"],              # Massive max-degree hub nodes
 
     "social": ["FB", "BK", "SL", "YT", "LJ"],
-    "web": ["EU", "UK", "SK"]
+    "web": ["EU", "UK", "SK"],
+
+    "mags_small": ["CA", "EN", "BK", "EA", "SL", "DB"],
+    "mags_large": ["AM", "YT", "SK", "EU"
+                   #"UK"
+                   ]
 }

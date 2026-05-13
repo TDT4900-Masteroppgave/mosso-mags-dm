@@ -19,9 +19,10 @@ def clean_and_write(src: str, dst: str, algo_type: str) -> None:
     is_mtx = src.endswith(".mtx")
 
     seen = set()
+    valid_edges = []
     header_skipped = False
 
-    with open(src, "r", encoding="utf-8") as fin, open(dst, "w", encoding="utf-8") as fout:
+    with open(src, "r", encoding="utf-8") as fin:
         for line in fin:
             if line.startswith(("#", "%")):
                 continue
@@ -41,15 +42,25 @@ def clean_and_write(src: str, dst: str, algo_type: str) -> None:
             try:
                 u, v = int(parts[0]), int(parts[1])
                 if u != v:
+                    # Ignore direction (convert to undirected)
                     edge = (min(u, v), max(u, v))
+                    # Remove multiple edges
                     if edge not in seen:
                         seen.add(edge)
-                        if algo_type == "mosso":
-                            fout.write(f"{u}\t{v}\t1\n")
-                        else:
-                            fout.write(f"{u}\t{v}\n")
+                        valid_edges.append(edge)
             except ValueError:
                 continue
+
+    random.seed(42)
+    random.shuffle(valid_edges)
+
+    # Now write the randomized stream to the disk
+    with open(dst, "w", encoding="utf-8") as fout:
+        for u, v in valid_edges:
+            if algo_type == "mosso":
+                fout.write(f"{u}\t{v}\t1\n")
+            else:
+                fout.write(f"{u}\t{v}\n")
 
 
 def retrieve_github_code(target_dir: str, algo_name: str, repo_url: str, branch: str, logger) -> None:
@@ -263,7 +274,6 @@ def _process_dataset_pipeline(ds: dict, required_algos: set, logger, prep_log: d
         target.update({
             "nodes": meta.get("nodes", 0),
             "edges": meta.get("edges", 0),
-            "deleted_edges": meta.get("deleted_edges", 0)
         })
 
     # Cleanup memory-heavy intermediates
