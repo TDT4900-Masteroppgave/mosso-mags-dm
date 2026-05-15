@@ -1,0 +1,1 @@
+./run.sh bayesian --jobs -1 --trials 200 --group tuning --algorithm kdd20-mosso ds ds_thr

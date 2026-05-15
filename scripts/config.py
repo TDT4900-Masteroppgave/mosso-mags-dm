@@ -35,21 +35,21 @@ ALGORITHMS = {
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
     },
-    "strat_2": {
+    "sm": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure",
         "type": "mosso",
         "template": ["e", "c", "interval", "h"],
         "binary_file": "mosso.jar",
     },
-    "strat_1_2": {
+    "top-b": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_top_b",
         "type": "mosso",
         "template": ["e", "c", "interval", "b", "h"],
         "binary_file": "mosso.jar",
     },
-    "strat_2_thr": {
+    "sm_thr": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
