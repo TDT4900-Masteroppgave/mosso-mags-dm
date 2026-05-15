@@ -18,12 +18,12 @@ from scripts.config import EXPERIMENT_DIR
 console = Console(highlight=False)
 
 EXPERIMENT_PLOTS = {
-    "benchmark": ["bar_chart_time", "bar_chart_compression"],
+    "benchmark": ["bar_chart_time", "bar_chart_time_log", "bar_chart_compression"],
     "processing_speed": ["bar_chart_time_micros"],
     "compression_checkpoints": ["line_chart_compression"],
-    "sweep": ["line_chart"],
+    "sweep": ["line_chart_sweep"],
     "scalability": ["line_chart_scalability"],
-    "bayesian": ["pareto_front"],
+    "bayesian": ["pareto_front", "trial_history"],
 }
 
 _STYLE = questionary.Style([
@@ -113,47 +113,6 @@ def _pick_datasets(available: list[str]) -> list[str]:
         console.print("[yellow]Select at least one dataset.[/yellow]")
 
 
-def _pick_aggregation(n_datasets: int) -> str | None:
-    if n_datasets < 2:
-        return "per_dataset"
-    return questionary.select(
-        "Aggregation:",
-        choices=[
-            Choice(title="Per dataset", value="per_dataset"),
-            Choice(title="Average across datasets", value="average"),
-        ],
-        style=_STYLE,
-        instruction="(↑/↓ arrows, enter to confirm)",
-    ).ask()
-
-
-def _get_sizes(meta: dict, key: str) -> dict[str, float]:
-    sizes = {}
-    for ds in meta.get("datasets", []):
-        if not isinstance(ds, dict):
-            continue
-        sn = ds.get("short_name")
-        val = ds.get(key)
-        if sn and isinstance(val, (int, float)):
-            sizes[sn] = float(val)
-    return sizes
-
-
-def _pick_normalization() -> str | None:
-    res = questionary.select(
-        "Normalize time by dataset size?",
-        choices=[
-            Choice(title="No (raw seconds)", value="none"),
-            Choice(title="Per edge (time / |E|)", value="edges"),
-        ],
-        style=_STYLE,
-        instruction="(↑/↓ arrows, enter to confirm)",
-    ).ask()
-    if res is None:
-        return None
-    return None if res == "none" else res
-
-
 def _pick_plot(session_type: str) -> type['Plotter'] | None:
     allowed_plot_ids = EXPERIMENT_PLOTS.get(session_type, [])
 
@@ -229,25 +188,11 @@ def main() -> None:
 
     time_label = "Time (seconds)"
     datasets = None
-    aggregate = "per_dataset"
-    normalize: str | None = None
 
     if available_datasets:
         datasets = _pick_datasets(available_datasets)
         if not datasets:
             return
-        aggregate = _pick_aggregation(len(datasets))
-        if aggregate is None:
-            return
-        normalize = _pick_normalization()
-
-        if normalize and normalize != "none":
-            sizes = _get_sizes(meta, normalize)
-            plot_df["time"] = plot_df.apply(
-                lambda row: row["time"] / sizes.get(row["dataset"], 1) if sizes.get(row["dataset"], 0) > 0 else row["time"],
-                axis=1
-            )
-            time_label = f"Time per {normalize} (s)"
 
     plotter_cls = _pick_plot(session.type)
     if not plotter_cls:
@@ -259,8 +204,6 @@ def main() -> None:
         f"[bold]Session:[/bold] {_fmt_ts(session.timestamp)}\n"
         f"[bold]Algorithms:[/bold] {', '.join(algos)}\n"
         f"[bold]Datasets:[/bold] {', '.join(datasets) if datasets else 'All'}\n"
-        f"[bold]Aggregation:[/bold] {aggregate}\n"
-        f"[bold]Normalization:[/bold] {normalize if normalize else 'None'}\n"
         f"[bold]Plot Type:[/bold] {plotter_cls.description}"
     )
     console.print(Panel(summary_text, title="Summary", border_style="cyan"))
@@ -269,14 +212,9 @@ def main() -> None:
 
     options = {
         "datasets": datasets,
-        "aggregate": aggregate,
         "time_label": time_label,
-        "normalize": normalize,
         "db_path": session.path / "optuna_study.db",
     }
-
-    if "param_name" in df.columns:
-        options["param_name"] = str(df["param_name"].iloc[0])
 
     try:
         out_paths = plotter_cls().process(plot_df, algos, out_dir, options)
