@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from rich.table import Table
 from rich import box
@@ -9,7 +10,15 @@ class ParameterSweep(Experiment):
         super().__init__("sweep")
         config = PARAM_CONFIG[self.args.param]
         if self.args.range:
-            self.sweep_values = list(range(*self.args.range))
+            start, stop, step = self.args.range
+            sweep_array = np.arange(start, stop + step, step)
+
+            # Convert back to native Python types to avoid JSON/DB serialization issues later
+            if config["type"] == int:
+                self.sweep_values = [int(x) for x in sweep_array]
+            else:
+                self.sweep_values = [float(x) for x in sweep_array]
+
         elif self.args.values:
             self.sweep_values = self.args.values
         else:
@@ -17,7 +26,7 @@ class ParameterSweep(Experiment):
 
     def add_custom_args(self, parser):
         parser.add_argument("--param", choices=list(PARAM_CONFIG.keys()), required=True)
-        parser.add_argument("--range", type=int, nargs=3, required=False)
+        parser.add_argument("--range", type=float, nargs=3, required=False)
         parser.add_argument("--values", type=int, nargs="+", required=False)
 
     def process(self) -> list[dict]:
