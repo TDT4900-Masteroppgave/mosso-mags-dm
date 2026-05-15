@@ -8,17 +8,17 @@ ALGORITHMS_DIR = Path("algorithms")
 BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
 PARAM_CONFIG = {
-    "c": {"description": "sample number", "default": 120, "bounds": (10, 240), "step": 10, "type": int},
-    "e": {"description": "escape", "default": 3, "bounds": (1, 5), "step": 1, "type": int},
+    "c": {"description": "sample number", "default": 120, "bounds": (10, 500), "step": 10, "type": int},
+    "e": {"description": "escape", "default": 3, "bounds": (0, 10), "step": 1, "type": int},
     "interval": {"description": "interval", "default": 1000, "type": int},
-    "b": {"description": "top candidates", "default": 5, "bounds": (1, 10), "step": 1, "type": int},
-    "h": {"description": "hashes", "default": 4, "bounds": (5, 50), "step": 5, "type": int},
+    "b": {"description": "top candidates", "default": 5, "bounds": (1, 20), "step": 1, "type": int},
+    "h": {"description": "hashes", "default": 4, "bounds": (2, 100), "step": 2, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
     "thr_end": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "step": 0.05, "type": float},
-    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (100, 500), "step": 50,
+    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (50, 1000), "step": 50,
             "type": int},
-    "T": {"description": "iterations over partitions", "default": 1, "bounds": (10, 50), "step": 10, "type": int},
-    "p": {"description": "number of threads", "default": 1, "bounds": (1, 40), "type": int},
+    "T": {"description": "iterations over partitions", "default": 50, "bounds": (5, 200), "step": 10, "type": int},
+    "p": {"description": "number of threads", "default": 30, "type": int},
 }
 
 ALGORITHMS = {
@@ -46,7 +46,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_top_b",
         "type": "mosso",
-        "template": ["e", "c", "interval", "b", "h"],
+        "template": ["e", "c", "interval", "h", "b"],
         "binary_file": "mosso.jar",
     },
     "sm_thr": {
