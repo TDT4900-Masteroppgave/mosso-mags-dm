@@ -11,22 +11,19 @@ class BarChartPlotter(Plotter):
     plotter_id = "bar_chart_time_micros"
     description = "Bar chart comparing Execution Time (Batch vs Streaming)"
 
-    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, ts: str, options: dict) -> list[Path]:
-        self.set_chart_theme()
-
-        # Smaller figsize proportioned for a two-column paper
+    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         fig, ax = plt.subplots(figsize=(6, 3.5))
 
-        num_algos = len(algos)
-        palette = ["#FFFFFF", "#DDDDDD", "#888888", "#000000"]
-        if num_algos > len(palette):
-            palette = sns.color_palette("Greys", num_algos)
+        palette = [self.get_algo_style(algo)["color"] for algo in algos]
+        ordered_datasets = self.get_dataset_order(data)
 
         sns.barplot(
             data=data,
             x="dataset",
             y="time_micros",
             hue="algorithm",
+            hue_order=algos, # Enforce order to match our palette
+            order=ordered_datasets,
             palette=palette,
             errorbar=None,
             edgecolor="black",
@@ -34,33 +31,25 @@ class BarChartPlotter(Plotter):
             ax=ax
         )
 
-        # Apply hatches manually to the containers
-        hatches = ['', 'xx', '//', '\\\\', '..', '*']
-        for i, bar_group in enumerate(ax.containers):
-            hatch = hatches[i % len(hatches)]
-            for bar in bar_group:
-                bar.set_hatch(hatch)
-
-        plt.xlabel("") # Omit x-label to match paper style
+        plt.xlabel("")
         ax.set_yscale("log", base=10)
         ax.yaxis.set_minor_locator(ticker.NullLocator())
 
-
-        # Italicized y-label
-        plt.ylabel("time (microseconds)", fontsize=14, style='italic')
+        plt.ylabel("Execution Time\n(microseconds)", fontsize=14, style='italic')
 
         plt.legend(
             title="",
             bbox_to_anchor=(0.5, 1.15),
             loc='upper center',
-            ncol=num_algos,
+            ncol=len(algos),
             frameon=False
         )
 
         plt.tight_layout()
 
-        # Save as high-res PNG
-        png_path = out_dir / f"runtime_bar_chart_{ts}.png"
+        suffix = "_".join(algos)
+        png_path = out_dir / f"execution_time_{suffix}.png"
+
         plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
         plt.close()
 

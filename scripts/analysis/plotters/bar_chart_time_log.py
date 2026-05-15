@@ -7,8 +7,8 @@ from scripts.analysis.plotters.base_plotter import Plotter, register
 
 @register
 class BarChartPlotter(Plotter):
-    plotter_id = "bar_chart_time"
-    description = "Bar chart comparing execution time"
+    plotter_id = "bar_chart_time_log"
+    description = "Bar chart comparing execution time logarithmic scale"
 
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         self.set_chart_theme()
@@ -32,6 +32,7 @@ class BarChartPlotter(Plotter):
         )
 
         plt.xlabel("")
+        ax.set_yscale("log", base=10)
         plt.ylabel("time (microseconds)", fontsize=14, style='italic')
 
         plt.legend(

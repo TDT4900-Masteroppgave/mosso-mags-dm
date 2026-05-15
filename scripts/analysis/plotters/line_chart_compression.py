@@ -1,7 +1,6 @@
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from scripts.analysis.plotters.base_plotter import Plotter, register
 
 @register
@@ -9,7 +8,7 @@ class LineChartCompressionPlotter(Plotter):
     plotter_id = "line_chart_compression"
     description = "Line chart for streaming compression over time"
 
-    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, ts: str, options: dict) -> list[Path]:
+    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         self.set_chart_theme()
 
         data["change_ratio"] = pd.to_numeric(data["change_ratio"], errors='coerce')
@@ -24,18 +23,14 @@ class LineChartCompressionPlotter(Plotter):
 
             fig, ax = plt.subplots(figsize=(6, 3.5))
 
-            markers = ['s', 'o', '^', 'D', 'X', 'v']
-
-            # Use specific colors if you want to perfectly mimic the paper,
-            # or stick to your grayscale/black theme. We'll use black/gray here.
-            colors = sns.color_palette("dark")
-
-            # Iterate and plot individually to handle the Batch vs Streaming logic
-            for i, algo in enumerate(algos):
+            for algo in algos:
                 algo_data = ds_data[ds_data["algorithm"] == algo].sort_values("change_ratio")
                 if algo_data.empty:
                     continue
 
+                style = self.get_algo_style(algo)
+                color = style["color"]
+                marker = style["marker"]
 
                 is_streaming = algo_data["is_streaming"].iloc[0]
 
@@ -46,7 +41,7 @@ class LineChartCompressionPlotter(Plotter):
                         algo_data["change_ratio"],
                         smoothed_ratio,
                         label=algo,
-                        color="red" if "mosso" in algo.lower() else colors[i % len(colors)],
+                        color=color,
                         linestyle="-",
                         linewidth=1.5,
                         marker=""
@@ -56,13 +51,13 @@ class LineChartCompressionPlotter(Plotter):
                         algo_data["change_ratio"],
                         algo_data["ratio"],
                         label=algo,
-                        color=colors[i % len(colors)],
-                        linestyle="", # Explicitly no connecting line
-                        marker=markers[i % len(markers)],
+                        color=color,
+                        linestyle="",
+                        marker=marker,
                         markersize=8,
-                        markeredgecolor=colors[i % len(colors)],
+                        markeredgecolor=color,
                         markerfacecolor="none",
-                        mew=1.2 # Marker edge width
+                        mew=1.2
                     )
 
             plt.ylabel("Compression Ratio", fontsize=14)
@@ -73,7 +68,7 @@ class LineChartCompressionPlotter(Plotter):
 
             ax.xaxis.set_major_formatter(plt.FuncFormatter(format_checkpoint))
             ax.set_xticks(paper_ticks)
-            ax.set_xlim(-0.05, 1.05) # Add a tiny padding so 0.0 and 1.0 markers aren't cut off
+            ax.set_xlim(-0.05, 1.05)
 
             plt.legend(
                 title="",
@@ -85,8 +80,7 @@ class LineChartCompressionPlotter(Plotter):
 
             plt.tight_layout()
 
-            # Save as high-res PNG
-            png_path = out_dir / f"compression_line_{ds}_{ts}.png"
+            png_path = out_dir / f"compression_line_{ds}.png"
             plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
             plt.close()
 

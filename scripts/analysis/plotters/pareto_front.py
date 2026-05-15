@@ -1,10 +1,13 @@
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+
+from optuna.exceptions import OptunaError
 from rich.console import Console
 from rich.table import Table
 from rich import box
+from matplotlib.lines import Line2D
+import optuna
 
 from scripts.analysis.plotters.base_plotter import Plotter, register
 
@@ -17,22 +20,19 @@ class OptunaPlotter(Plotter):
         super().__init__()
         self.generates_plots = True
 
-    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, ts: str, options: dict) -> list[Path]:
+    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         self.set_chart_theme()
 
-        # Handle context if aggregated (e.g., "average")
         if "dataset" not in data.columns:
             data = data.copy()
             data["dataset"] = context
 
         datasets = data["dataset"].unique()
         generated_files = []
-        knee_points_data = [] # Store knee points for the summary table
+        pareto_data = []
 
-        # Match paper's lowercase italic label styling
         time_label = options.get("time_label", "time (seconds)").lower()
 
-        # Dynamically identify parameter columns (anything that isn't a core metric)
         exclude_cols = {'dataset', 'algorithm', 'time', 'ratio', 'change_ratio', 'trial', 'power_of_2', 'edges_evaluated', 'time_micros'}
         param_cols = [c for c in data.columns if c not in exclude_cols]
 
@@ -40,19 +40,37 @@ class OptunaPlotter(Plotter):
             ds_data = data[data["dataset"] == ds].copy()
             if ds_data.empty: continue
 
-            fig, ax = plt.subplots(figsize=(6, 3.5))
-
-            # Neutral, dark academic colors
-            colors = ["#222222", "#4A4A4A", "#2C3E50", "#4A4E69", "#34495E", "#555555"]
+            fig, ax = plt.subplots(figsize=(7, 4.5))
+            axins = ax.inset_axes([0.45, 0.45, 0.5, 0.5])
 
             plotted_algos = 0
-            plotted_knees = False
+
+            pareto_t_min, pareto_t_max = float('inf'), float('-inf')
+            pareto_r_min, pareto_r_max = float('inf'), float('-inf')
+
+            kdd_t_min, kdd_t_max = float('inf'), float('-inf')
+            kdd_r_min, kdd_r_max = float('inf'), float('-inf')
 
             for i, algo in enumerate(algos):
                 algo_data = ds_data[ds_data["algorithm"] == algo].copy()
                 if algo_data.empty: continue
 
-                # Calculate Pareto Frontier
+                style = self.get_algo_style(algo)
+                color = style["color"]
+                mk = style["marker"]
+
+                ax.plot(
+                    algo_data["time"], algo_data["ratio"],
+                    marker=mk, markersize=3, color=color,
+                    linestyle="none", alpha=0.25, zorder=2,
+                    label="_nolegend_"
+                )
+                axins.plot(
+                    algo_data["time"], algo_data["ratio"],
+                    marker=mk, markersize=3, color=color,
+                    linestyle="none", alpha=0.35, zorder=2
+                )
+
                 algo_data = algo_data.sort_values(by=["ratio", "time"])
                 pareto_front = []
                 min_time = float('inf')
@@ -64,164 +82,179 @@ class OptunaPlotter(Plotter):
 
                 if pareto_front:
                     pareto_df = pd.DataFrame(pareto_front).reset_index(drop=True)
-                    color = colors[i % len(colors)]
+                    pareto_df = pareto_df.sort_values(by="time")
 
                     ax.plot(
-                        pareto_df["ratio"], pareto_df["time"],
-                        label=algo,
-                        color=color,
-                        linestyle="-",
-                        linewidth=2.0,
-                        zorder=4
+                        pareto_df["time"], pareto_df["ratio"],
+                        label=algo, color=color, linestyle="-", linewidth=1.5,
+                        alpha=0.9, zorder=3
                     )
+                    axins.plot(
+                        pareto_df["time"], pareto_df["ratio"],
+                        color=color, linestyle="-", linewidth=2.0,
+                        alpha=0.9, zorder=3
+                    )
+
                     plotted_algos += 1
 
-                    if len(pareto_df) > 1:
-                        # Normalize Ratio (Linear Space)
-                        r_min, r_max = pareto_df["ratio"].min(), pareto_df["ratio"].max()
-                        r_range = r_max - r_min if r_max > r_min else 1.0
-                        r_norm = (pareto_df["ratio"] - r_min) / r_range
+                    if algo == "kdd20-mosso":
+                        kdd_t_min = min(kdd_t_min, pareto_df["time"].min())
+                        kdd_t_max = max(kdd_t_max, pareto_df["time"].max())
+                        kdd_r_min = min(kdd_r_min, pareto_df["ratio"].min())
+                        kdd_r_max = max(kdd_r_max, pareto_df["ratio"].max())
 
-                        # Normalize Time (Log Space)
-                        log_t = np.log10(pareto_df["time"].clip(lower=1e-10))
-                        t_min, t_max = log_t.min(), log_t.max()
-                        t_range = t_max - t_min if t_max > t_min else 1.0
-                        t_norm = (log_t - t_min) / t_range
+                    pareto_t_min = min(pareto_t_min, pareto_df["time"].min())
+                    pareto_t_max = max(pareto_t_max, pareto_df["time"].max())
+                    pareto_r_min = min(pareto_r_min, pareto_df["ratio"].min())
+                    pareto_r_max = max(pareto_r_max, pareto_df["ratio"].max())
 
-                        # Find point closest to the ideal origin (0, 0)
-                        dist_sq = r_norm**2 + t_norm**2
-                        knee_idx = dist_sq.idxmin()
-                        knee_point = pareto_df.loc[knee_idx]
-
-                        knee_info = {
+                    for _, pt in pareto_df.iterrows():
+                        pt_info = {
                             "Dataset": ds,
                             "Algorithm": algo,
-                            "Relative Size": knee_point["ratio"],
-                            "Time (s)": knee_point["time"]
+                            "Relative Size": pt["ratio"],
+                            "Time (s)": pt["time"]
                         }
 
                         for p in param_cols:
-                            val = knee_point.get(p)
+                            val = pt.get(p)
                             if pd.notna(val):
-                                # Clean up formatting (e.g., 120.0 -> 120)
-                                if isinstance(val, float) and val.is_integer():
-                                    val = int(val)
-                                knee_info[p] = val
+                                if isinstance(val, float):
+                                    if val.is_integer():
+                                        val = int(val)
+                                    elif p == "thr_end":
+                                        val = round(val, 2)
+                                pt_info[p] = val
 
-                        knee_points_data.append(knee_info)
+                        pareto_data.append(pt_info)
 
-                        ax.plot(
-                            knee_point["ratio"], knee_point["time"],
-                            marker='o',
-                            markersize=7,
-                            markerfacecolor='white',
-                            markeredgecolor=color,
-                            markeredgewidth=1.8,
-                            linestyle="none",
-                            zorder=5,
-                            label="Knee Point" if not plotted_knees else None
-                        )
-                        plotted_knees = True
-                    # ------------------------------
+            plt.xlabel(time_label, fontsize=14, style='italic')
+            plt.ylabel("relative size", fontsize=14, style='italic')
 
-            # Academic italicized labels
-            plt.xlabel("relative size", fontsize=14, style='italic')
-            plt.ylabel(time_label, fontsize=14, style='italic')
+            use_t_min = kdd_t_min if kdd_t_min < float('inf') else pareto_t_min
+            use_t_max = kdd_t_max if kdd_t_max > float('-inf') else pareto_t_max
+            use_r_min = kdd_r_min if kdd_r_min < float('inf') else pareto_r_min
+            use_r_max = kdd_r_max if kdd_r_max > float('-inf') else pareto_r_max
 
-            # Uncluster the data
-            ax.set_yscale("log")
+            if use_t_max > float('-inf'):
+                t_pad = (use_t_max - use_t_min) * 0.05 if use_t_max > use_t_min else use_t_max * 0.05
+                r_pad = (use_r_max - use_r_min) * 0.05 if use_r_max > use_r_min else use_r_max * 0.05
 
-            # Subtle grid
+                if t_pad == 0: t_pad = 0.01
+                if r_pad == 0: r_pad = 0.01
+
+                axins.set_xlim(max(0, use_t_min - t_pad), use_t_max + t_pad)
+                axins.set_ylim(max(0, use_r_min - r_pad), use_r_max + r_pad)
+
+                ax.indicate_inset_zoom(axins, edgecolor="black", alpha=0.5, linewidth=1.5)
+
+                axins.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
+                axins.tick_params(axis='both', which='major', labelsize=8)
+
             ax.grid(True, which="major", linestyle="--", linewidth=0.7, alpha=0.6)
-            ax.grid(True, which="minor", axis="y", linestyle=":", linewidth=0.5, alpha=0.4)
+            ax.grid(True, which="minor", axis="x", linestyle=":", linewidth=0.5, alpha=0.4)
 
             if plotted_algos > 0:
-                plt.legend(
+                legend_elements = []
+                for a in sorted(algos):
+                    if a in ds_data["algorithm"].values:
+                        style = self.get_algo_style(a)
+                        legend_elements.append(Line2D([0], [0], color=style["color"], lw=1.5, marker=style["marker"], label=a))
+
+                ax.legend(
+                    handles=legend_elements,
                     title="",
-                    loc='upper right',
-                    frameon=False
+                    loc='upper center',
+                    bbox_to_anchor=(0.5, -0.15),
+                    ncol=plotted_algos,
+                    handlelength=1.5,
+                    handletextpad=0.4,
+                    columnspacing=1.0,
+                    frameon=False,
+                    fontsize=9
                 )
 
             fig.tight_layout()
 
-            out_path = out_dir / f"pareto_front_{ds}_{ts}.png"
+            out_path = out_dir / f"pareto_front_{ds}.png"
             fig.savefig(out_path, format="png", dpi=300, bbox_inches="tight")
             plt.close(fig)
 
             generated_files.append(out_path)
 
-        if knee_points_data:
+        if pareto_data:
             console = Console(record=True)
-            knee_df = pd.DataFrame(knee_points_data)
+            pareto_df_export = pd.DataFrame(pareto_data)
 
             base_cols = ["Dataset", "Algorithm", "Relative Size", "Time (s)"]
-            dynamic_cols = [c for c in knee_df.columns if c not in base_cols]
+            dynamic_cols = [c for c in pareto_df_export.columns if c not in base_cols]
             all_cols = base_cols + dynamic_cols
-            knee_df = knee_df[all_cols]
+            pareto_df_export = pareto_df_export[all_cols]
 
-            csv_path = out_dir / f"pareto_knee_points_{ts}.csv"
-            knee_df.to_csv(csv_path, index=False)
-            generated_files.append(csv_path)
-
-            # Print standard table
-            table = Table(title="Pareto Optimal Knee Points", box=box.SIMPLE, show_header=True, header_style="bold yellow")
+            table = Table(title="All Pareto Optimal Configurations (Per Dataset)", box=box.SIMPLE, show_header=True, header_style="bold yellow")
             for col in all_cols:
                 if col == "Dataset": table.add_column(col, style="cyan")
                 elif col == "Algorithm": table.add_column(col, style="green")
                 elif col in base_cols: table.add_column(col, justify="right")
                 else: table.add_column(str(col), justify="right", style="magenta")
 
-            for _, row in knee_df.iterrows():
+            for _, row in pareto_df_export.iterrows():
                 row_data = []
                 for col in all_cols:
                     val = row.get(col)
-                    if pd.isna(val):
-                        row_data.append("-")
-                    elif col in ["Relative Size", "Time (s)"]:
-                        row_data.append(f"{val:.4f}")
-                    else:
-                        row_data.append(str(val))
+                    if pd.isna(val): row_data.append("-")
+                    elif col in ["Relative Size", "Time (s)"]: row_data.append(f"{val:.4f}")
+                    elif col == "thr_end" and isinstance(val, (int, float)): row_data.append(f"{val:.2f}")
+                    else: row_data.append(str(val))
                 table.add_row(*row_data)
 
-            console.print("\n")
             console.print(table)
 
-            if len(datasets) > 1:
-                # Group by Algorithm, calculate mean for numeric columns
-                avg_df = knee_df.drop(columns=["Dataset"]).groupby("Algorithm").mean(numeric_only=True).reset_index()
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-                # Save Average CSV
-                avg_csv_path = out_dir / f"pareto_average_parameters_{ts}.csv"
-                avg_df.to_csv(avg_csv_path, index=False)
-                generated_files.append(avg_csv_path)
+            db_path = None
+            for parent in out_dir.parents:
+                potential_db = parent / "optuna_study.db"
+                if potential_db.exists():
+                    db_path = potential_db
+                    break
 
-                # Print Average Table
-                avg_table = Table(title="Average Optimal Parameters Across All Datasets", box=box.SIMPLE, show_header=True, header_style="bold green")
-                avg_table.add_column("Algorithm", style="green")
+            if db_path:
+                storage_url = f"sqlite:///{db_path}"
+                console.print("\n[bold cyan]=== GLOBAL PARETO CONFIGURATIONS (ACROSS ALL DATASETS) ===[/bold cyan]")
 
-                avg_cols = [c for c in avg_df.columns if c != "Algorithm"]
-                for col in avg_cols:
-                    if col in ["Relative Size", "Time (s)"]:
-                        avg_table.add_column(f"Avg {col}", justify="right")
-                    else:
-                        avg_table.add_column(f"Avg {col}", justify="right", style="magenta")
+                for algo_name in algos:
+                    try:
+                        study = optuna.load_study(study_name=algo_name, storage=storage_url)
+                        pareto_trials = study.best_trials
 
-                for _, row in avg_df.iterrows():
-                    row_data = [str(row["Algorithm"])]
-                    for col in avg_cols:
-                        val = row[col]
-                        if pd.isna(val):
-                            row_data.append("-")
-                        elif col in ["Relative Size", "Time (s)"]:
-                            row_data.append(f"{val:.4f}")
-                        else:
-                            row_data.append(f"{val:.2f}")
-                    avg_table.add_row(*row_data)
+                        if not pareto_trials:
+                            continue
 
-                console.print("\n")
-                console.print(avg_table)
+                        console.print(f"\n[bold green]   {algo_name}[/bold green]")
+                        for trial in pareto_trials:
+                            avg_time = trial.values[0]
+                            avg_ratio = trial.values[1]
 
-            txt_path = out_dir / f"pareto_summary_tables_{ts}.txt"
+                            console.print(f"  Trial {trial.number} | Time: {avg_time:.6f} | Ratio: {avg_ratio:.4f}")
+
+                            formatted_params = []
+                            for k, v in trial.params.items():
+                                if isinstance(v, float):
+                                    if v.is_integer():
+                                        formatted_params.append(f"{k}: {int(v)}")
+                                    else:
+                                        formatted_params.append(f"{k}: {v:.2f}")
+                                else:
+                                    formatted_params.append(f"{k}: {v}")
+                            params_str = ", ".join(formatted_params)
+
+                            console.print(f"    [italic]Params:[/italic] [bold yellow]{params_str}[/bold yellow]")
+                    except OptunaError as e:
+                        print(f"[bold red]Error loading study for {algo_name}: {e}[/bold red]")
+                        return generated_files
+
+            txt_path = out_dir / f"pareto_summary_tables.txt"
             console.save_text(str(txt_path))
             generated_files.append(txt_path)
 

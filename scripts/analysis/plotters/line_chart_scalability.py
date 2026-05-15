@@ -10,7 +10,7 @@ class LineChartScalabilityPlotter(Plotter):
     plotter_id = "line_chart_scalability"
     description = "Line chart for scalability"
 
-    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, ts: str, options: dict) -> list[Path]:
+    def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         self.set_chart_theme()
 
         data["edges_evaluated"] = pd.to_numeric(data["edges_evaluated"], errors='coerce')
@@ -26,22 +26,23 @@ class LineChartScalabilityPlotter(Plotter):
 
             fig, ax = plt.subplots(figsize=(6, 3.5))
 
-            num_algos = len(ds_data["algorithm"].unique())
-            markers = ['s', 'o', '^', 'D', 'X', 'v']
+            palette_dict = {algo: self.get_algo_style(algo)["color"] for algo in algos}
+            marker_dict = {algo: self.get_algo_style(algo)["marker"] for algo in algos}
 
             sns.lineplot(
                 data=ds_data,
                 x="edges_evaluated",
                 y="accumulated_time_sec",
                 hue="algorithm",
+                hue_order=algos,
                 style="algorithm",
-                markers=markers[:num_algos],
-                dashes=False, # Keep all lines solid
-                palette=["black"] * num_algos, # Force all lines to black
-                linewidth=1.2,
+                style_order=algos,
+                markers=marker_dict,
+                dashes=False,
+                palette=palette_dict,
+                linewidth=1.5,
                 markersize=8,
-                markeredgecolor="black",
-                markerfacecolor="none", # Empty markers
+                markerfacecolor="none",
                 errorbar=None,
                 ax=ax
             )
@@ -85,13 +86,12 @@ class LineChartScalabilityPlotter(Plotter):
                 title="",
                 bbox_to_anchor=(0.5, 1.15),
                 loc='upper center',
-                ncol=num_algos + 1,
+                ncol=len(algos) + 1,
                 frameon=False
             )
             plt.tight_layout()
 
-            # Save as high-res PNG
-            png_path = out_dir / f"scalability_line_{ds}_{ts}.png"
+            png_path = out_dir / f"scalability_line_{ds}.png"
             plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
             plt.close()
 
