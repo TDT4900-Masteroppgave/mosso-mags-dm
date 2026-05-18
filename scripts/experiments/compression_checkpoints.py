@@ -96,6 +96,8 @@ class CompressionCheckpoints(Experiment):
                         if res is None:
                             continue
 
+                        is_streaming = True if algo_type == "mosso" else False
+
                         t_avg, r_avg, _, _, _ = res
                         self.record_result({
                             "dataset": short_name,
@@ -103,7 +105,7 @@ class CompressionCheckpoints(Experiment):
                             "change_ratio": fraction,
                             "time": t_avg,
                             "ratio": r_avg,
-                            "is_streaming": False,
+                            "is_streaming": is_streaming,
                             **params
                         })
 

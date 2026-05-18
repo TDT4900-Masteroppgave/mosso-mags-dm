@@ -21,7 +21,7 @@ class Plotter(ABC):
         "ds": {"color": "#56B4E9", "marker": "*"},             # Sky Blue (Okabe-Ito)
         "ds_thr": {"color": "#E6C122", "marker": "h"},         # Darkened Yellow (Accessibility contrast)
         "ds_sm_thr": {"color": "#882255", "marker": "X"},      # Wine (Paul Tol)
-        "mags": {"color": "#332288", "marker": "<"},           # Deep Indigo (Paul Tol)
+        "mags": {"color": "#EE3377", "marker": "o"},           # Deep Indigo (Paul Tol)
         "para_mags": {"color": "#88CCEE", "marker": ">"},      # Cyan (Paul Tol)
         "mags_dm": {"color": "#117733", "marker": "d"},        # Pine Green (Paul Tol)
         "para_mags_dm": {"color": "#999933", "marker": "P"}    # Olive (Paul Tol)
@@ -79,6 +79,12 @@ class Plotter(ABC):
         datasets = opts.get("datasets")
 
         sub = df[df["algorithm"].isin(algos)].copy()
+
+        # Force mags and mags_dm to be batch
+        if "is_streaming" in sub.columns:
+            sub["is_streaming"] = sub["is_streaming"].astype(str)
+            sub.loc[sub["algorithm"].isin(["mags", "mags_dm"]), "is_streaming"] = "0"
+
         if datasets:
             sub = sub[sub["dataset"].isin(datasets)]
         if sub.empty:
@@ -109,7 +115,7 @@ class Plotter(ABC):
         numeric_cols = [c for c in numeric_cols if c not in group_cols]
 
         if numeric_cols:
-            grouped_runs = sub.groupby(group_cols, as_index=False)[numeric_cols].mean()
+            grouped_runs = sub.groupby(group_cols, dropna=False, as_index=False)[numeric_cols].mean()
         else:
             grouped_runs = sub.drop_duplicates(subset=group_cols)
 

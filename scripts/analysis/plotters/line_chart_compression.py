@@ -32,7 +32,8 @@ class LineChartCompressionPlotter(Plotter):
                 color = style["color"]
                 marker = style["marker"]
 
-                is_streaming = algo_data["is_streaming"].iloc[0]
+                raw_streaming_val = str(algo_data["is_streaming"].iloc[0]).strip().lower()
+                is_streaming = raw_streaming_val in ["1", "1.0", "true"]
 
                 if is_streaming:
                     smoothed_ratio = algo_data["ratio"].rolling(window=3, min_periods=1).mean()
