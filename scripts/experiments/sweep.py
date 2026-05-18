@@ -29,8 +29,7 @@ class ParameterSweep(Experiment):
         parser.add_argument("--range", type=float, nargs=3, required=False)
         parser.add_argument("--values", type=int, nargs="+", required=False)
 
-    def process(self) -> list[dict]:
-        metrics = []
+    def process(self) -> None:
         for i, short_name in enumerate(self.datasets.keys(), 1):
             self._print_status(i, short_name)
 
@@ -56,7 +55,7 @@ class ParameterSweep(Experiment):
 
                     _, _, t_list, r_list, _  = res
                     for run, (t, r) in enumerate(zip(t_list, r_list)):
-                        metrics.append({
+                        self.record_result({
                             "dataset": short_name,
                             "algorithm": algo_name,
                             "run": run + 1,
@@ -66,7 +65,6 @@ class ParameterSweep(Experiment):
                             "param": val,
                             **params
                         })
-        return metrics
 
     def output(self, df: pd.DataFrame):
         title = f"Parameter Sweep Summary: {self.args.param.upper()}"

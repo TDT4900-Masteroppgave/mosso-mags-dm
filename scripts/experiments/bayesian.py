@@ -13,8 +13,7 @@ class Bayesian(Experiment):
         parser.add_argument("--trials", type=int, default=100)
         parser.add_argument("--jobs", type=int, default=1)
 
-    def process(self) -> list[dict]:
-        metrics = []
+    def process(self) -> None:
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         storage_url = f"sqlite:///{self.session_dir / 'optuna_study.db'}"
 
@@ -69,7 +68,7 @@ class Bayesian(Experiment):
                     trial.set_user_attr(f"ratio_{short_name}", f"{r_avg:.5f}")
 
                     for i, (t, r) in enumerate(zip(t_list, r_list)):
-                        metrics.append({
+                        self.record_result({
                             "dataset": short_name,
                             "algorithm": algo_name,
                             "run": i + 1,
@@ -88,8 +87,6 @@ class Bayesian(Experiment):
                 return avg_time, avg_ratio
 
             study.optimize(objective, n_trials=self.args.trials, n_jobs=self.args.jobs, show_progress_bar=True)
-
-        return metrics
 
     def output(self, df: pd.DataFrame):
         for algo in df['algorithm'].unique():

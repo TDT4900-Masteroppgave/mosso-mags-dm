@@ -9,8 +9,7 @@ class ProcessingTime(Experiment):
     def __init__(self):
         super().__init__("processing_speed")
 
-    def process(self) -> list[dict]:
-        metrics = []
+    def process(self) -> None:
         for i, short_name in enumerate(self.datasets, 1):
             self._print_status(i, short_name)
             total_edges = DATASETS.get(short_name, {}).get("meta", {}).get("edges", 1)
@@ -34,7 +33,7 @@ class ProcessingTime(Experiment):
                     t_micros = t * 1_000_000
                     final_t_micros = (t_micros / total_edges) if is_inc else t_micros
 
-                    metrics.append({
+                    self.record_result({
                         "dataset": short_name,
                         "algorithm": algo_name,
                         "run": run + 1,
@@ -43,8 +42,6 @@ class ProcessingTime(Experiment):
                         "time_micros": final_t_micros,
                         **params
                     })
-
-        return metrics
 
     def output(self, df: pd.DataFrame):
         table = Table(title="Incremental vs Batch Execution Time", box=box.SIMPLE, show_header=True,

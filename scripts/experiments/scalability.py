@@ -35,8 +35,7 @@ class Scalability(Experiment):
     def __init__(self):
         super().__init__("scalability")
 
-    def process(self) -> list[dict]:
-        metrics = []
+    def process(self) -> None:
         for i, short_name in enumerate(self.datasets.keys(), 1):
             self._print_status(i, short_name)
 
@@ -66,7 +65,7 @@ class Scalability(Experiment):
                         continue
 
                     t_avg, _, _, _, _ = res
-                    metrics.append({
+                    self.record_result({
                         "dataset": short_name,
                         "algorithm": algo_name,
                         "edges_evaluated": max_edges,
@@ -74,7 +73,6 @@ class Scalability(Experiment):
                         "accumulated_time_sec": t_avg,
                         **params
                     })
-        return metrics
 
     def output(self, df: pd.DataFrame):
         table = Table(title="Scalability: Accumulated Execution Time", box=box.SIMPLE, show_header=True,

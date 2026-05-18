@@ -38,13 +38,16 @@ class AlgorithmRunner(ABC):
     def parse_output(self, stdout: str) -> tuple[Optional[float], Optional[float], list[dict]]:
         pass
 
-    def _execute_cmd(self, cmd: list[str], cwd=None, env=None, log_msg: Optional[str] = None):
+    def _execute_cmd(self, cmd: list[str], cwd=None, env=None, log_msg: Optional[str] = None, timeout: Optional[int] = None):
         if log_msg:
             self.logger.debug(log_msg)
         try:
             return subprocess.run(
-                cmd, cwd=cwd, env=env, check=True, capture_output=True, text=True
+                cmd, cwd=cwd, env=env, check=True, capture_output=True, text=True, timeout=timeout
             )
+        except subprocess.TimeoutExpired as e:
+            self.logger.error(f"[!] Command timed out after {timeout}s: {' '.join(cmd)}")
+            raise
         except subprocess.CalledProcessError as e:
             self.logger.error(f"[!] Command failed: {' '.join(cmd)}\nSTDERR: {e.stderr}")
             raise
@@ -71,14 +74,14 @@ class AlgorithmRunner(ABC):
                 shutil.rmtree(self.target_dir)
             raise RuntimeError(f"Compilation failed for {self.algo_name}.") from e
 
-    def run_single(self, format_dataset_path: str, output_name: str, parameters: list) -> tuple[
+    def run_single(self, format_dataset_path: str, output_name: str, parameters: list, timeout: Optional[int] = None) -> tuple[
         Optional[float], Optional[float], list[dict]]:
         graph_output_path = self.session_dir / output_name
         cmd = self.build_command(format_dataset_path, str(graph_output_path), parameters)
         self.logger.debug(f"[{self.algo_name}] Running command: {' '.join(cmd)}")
 
         try:
-            result = self._execute_cmd(cmd)
+            result = self._execute_cmd(cmd, timeout=timeout)
             parsed_time, parsed_ratio, intermediates = self.parse_output(result.stdout)
 
             log_file = self.run_log_dir / f"{output_name}.log"
@@ -94,19 +97,21 @@ class AlgorithmRunner(ABC):
 
             return parsed_time, parsed_ratio, intermediates
 
+        except subprocess.TimeoutExpired as e:
+            self.logger.error(f"[!] Execution timed out for {output_name}")
         except subprocess.CalledProcessError as e:
             self.logger.error(f"[!] Execution crashed for {output_name}: {e}\nSTDERR:\n{e.stderr}")
         except Exception as e:
             self.logger.error(f"[!] Unexpected error for {output_name}: {e}")
         return None, None, []
 
-    def run_multiple(self, dataset_path: str, output_name: str, n_runs: int, parameters: list) \
+    def run_multiple(self, dataset_path: str, output_name: str, n_runs: int, parameters: list, timeout: Optional[int] = None) \
             -> tuple[Optional[float], Optional[float], list, list, list]:
         times, ratios, all_intermediates = [], [], []
 
         for i in range(n_runs):
             self.logger.debug(f"Iter {i + 1}/{n_runs} for {output_name}")
-            t, r, intermediates = self.run_single(dataset_path, f"{output_name}_run{i + 1}", parameters)
+            t, r, intermediates = self.run_single(dataset_path, f"{output_name}_run{i + 1}", parameters, timeout=timeout)
             if t is not None and r is not None:
                 times.append(t)
                 ratios.append(r)

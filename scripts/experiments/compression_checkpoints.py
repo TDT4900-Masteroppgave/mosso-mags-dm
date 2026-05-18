@@ -35,8 +35,7 @@ class CompressionCheckpoints(Experiment):
     def __init__(self):
         super().__init__("compression_checkpoints")
 
-    def process(self) -> list[dict]:
-        metrics = []
+    def process(self) -> None:
         checkpoints = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         for i, short_name in enumerate(self.datasets, 1):
             self._print_status(i, short_name)
@@ -65,7 +64,7 @@ class CompressionCheckpoints(Experiment):
                         if fraction >= 1.0:
                             continue
 
-                        metrics.append({
+                        self.record_result({
                             "dataset": short_name,
                             "algorithm": algo_name,
                             "change_ratio": fraction,
@@ -75,7 +74,7 @@ class CompressionCheckpoints(Experiment):
                             **params
                         })
 
-                    metrics.append({
+                    self.record_result({
                         "dataset": short_name,
                         "algorithm": algo_name,
                         "change_ratio": 1.0,
@@ -98,7 +97,7 @@ class CompressionCheckpoints(Experiment):
                             continue
 
                         t_avg, r_avg, _, _, _ = res
-                        metrics.append({
+                        self.record_result({
                             "dataset": short_name,
                             "algorithm": algo_name,
                             "change_ratio": fraction,
@@ -107,7 +106,6 @@ class CompressionCheckpoints(Experiment):
                             "is_streaming": False,
                             **params
                         })
-        return metrics
 
     def output(self, df: pd.DataFrame):
         table = Table(title="Compression Compactness over Time", box=box.SIMPLE, show_header=True, header_style="bold yellow")

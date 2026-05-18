@@ -12,8 +12,7 @@ class Benchmark(Experiment):
     def add_custom_args(self, parser):
         parser.add_argument("--baseline", type=str)
 
-    def process(self) -> list[dict]:
-        metrics = []
+    def process(self) -> None:
         for i, short_name in enumerate(self.datasets.keys(), 1):
             self._print_status(i, short_name)
 
@@ -24,6 +23,7 @@ class Benchmark(Experiment):
                 dataset_path = self._get_dataset_path(short_name, algo_type)
                 if not dataset_path:
                     continue
+
                 res = self.execute_runner(dataset_path, short_name, algo_name,  params)
                 if res is None:
                     continue
@@ -31,7 +31,7 @@ class Benchmark(Experiment):
                 _, _, t_list, r_list, _ = res
 
                 for run, (t, r) in enumerate(zip(t_list, r_list)):
-                    metrics.append({
+                    self.record_result({
                         "dataset": short_name,
                         "algorithm": algo_name,
                         "run": run + 1,
@@ -39,7 +39,6 @@ class Benchmark(Experiment):
                         "ratio": r,
                         **params
                     })
-        return metrics
 
     def output(self, df: pd.DataFrame):
         global_avg = df.groupby('algorithm', as_index=False)[['time', 'ratio']].mean()

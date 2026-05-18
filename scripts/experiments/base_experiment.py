@@ -60,7 +60,7 @@ class Experiment(ABC):
         pass
 
     @abstractmethod
-    def process(self) -> list[dict]:
+    def process(self) -> None:
         pass
 
     @abstractmethod
@@ -88,10 +88,9 @@ class Experiment(ABC):
             self._build_algorithms()
 
             self.logger.rule("[bold]Processing[/bold]")
-            metrics = self.process()
+            self.process()
 
-            if metrics:
-                self.results.extend(metrics)
+            if self.results:
                 self._handle_results()
             else:
                 self.logger.warning("No results generated")
@@ -108,13 +107,16 @@ class Experiment(ABC):
         run_text = f"({self.args.runs} run{'s' if self.args.runs != 1 else ''})"
         self.logger.print(f"[bold cyan][{i}/{len(self.datasets)}][/bold cyan] {short_name} {run_text}")
 
+    def record_result(self, metric: dict) -> None:
+        self.results.append(metric)
+        if self.db_conn:
+            db.write_result(self.db_conn, metric)
+
     def _handle_results(self) -> None:
         if not self.results:
             return
 
         df = pd.DataFrame(self.results)
-        if self.db_conn:
-            db.write_results_bulk(self.db_conn, df)
 
         self.print_result(df)
         self.output(df)
@@ -165,7 +167,8 @@ class Experiment(ABC):
 
         with self.logger.status(f"[bold blue]Running {algo_name} | params: {params} [/bold blue]"):
             output_name = f"{algo_name}_{short_name}_{self.timestamp}"
-            res = runner.run_multiple(dataset_path, output_name, self.args.runs, list(params.values()))
+            timeout = getattr(self.args, "timeout", None)
+            res = runner.run_multiple(dataset_path, output_name, self.args.runs, list(params.values()), timeout=timeout)
 
         t_avg, r_avg, t_list, r_list, intermediates = res
         if t_avg is None or r_avg is None:
@@ -240,6 +243,7 @@ class Experiment(ABC):
         parser.add_argument("--algorithm", nargs='+')
         parser.add_argument("--is-local", action="store_true")
         parser.add_argument("--seed", type=int, default=42)
+        parser.add_argument("--timeout", type=int, default=None, help="Timeout in seconds for algorithm execution.")
 
         for p_name, p_data in PARAM_CONFIG.items():
             parser.add_argument(f"--{p_name}", type=type(p_data["default"]), default=p_data["default"])

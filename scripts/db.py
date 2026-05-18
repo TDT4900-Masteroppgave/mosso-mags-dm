@@ -13,6 +13,12 @@ def write_results_bulk(conn: sqlite3.Connection, df: pd.DataFrame) -> None:
         # if_exists="append" will automatically add new columns if your DataFrame changes later!
         df.to_sql("results", conn, if_exists="append", index=False)
 
+def write_result(conn: sqlite3.Connection, result: dict) -> None:
+    """Writes a single result dictionary to the DB."""
+    if result:
+        df = pd.DataFrame([result])
+        df.to_sql("results", conn, if_exists="append", index=False)
+
 def read_results(conn: sqlite3.Connection) -> pd.DataFrame:
     df = pd.read_sql("SELECT * FROM results", conn)
     return df
