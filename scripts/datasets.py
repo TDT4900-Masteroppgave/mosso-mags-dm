@@ -92,7 +92,9 @@ def download_dataset(url: str, filename: str, timeout: int = 60) -> str:
 
         if url.endswith(".zip"):
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                member = next(m for m in zip_ref.namelist() if m.endswith(".edges"))
+                target_ext = Path(filename).suffix
+                member = next(m for m in zip_ref.namelist() if m.endswith(target_ext))
+
                 with zip_ref.open(member) as f_in, open(txt_path, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)  # type: ignore
 

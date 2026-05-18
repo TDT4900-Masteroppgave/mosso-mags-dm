@@ -178,13 +178,14 @@ DATASETS = {
             "type": "Co-purchasing"
         },
     },
-    "EU": {
-        "url": "https://sparse.tamu.edu/MM/LAW/eu-2005.tar.gz",
-        "filename": "eu-2005.mtx",
+    "CN": {
+        "url": "https://nrvis.com/download/data/dimacs10/cnr-2000.zip",
+        "filename": "cnr-2000.mtx",
         "meta": {
-            "type": "Hyperlink"
-        },
+            "type": "Web"
+        }
     },
+
     "YT": {
         "url": "https://snap.stanford.edu/data/bigdata/communities/com-youtube.ungraph.txt.gz",
         "filename": "com-youtube.ungraph.txt",
@@ -197,6 +198,20 @@ DATASETS = {
         "filename": "as-skitter.txt",
         "meta": {
             "type": "Internet Infrastructure"
+        },
+    },
+    "IN": {
+        "url": "https://suitesparse-collection-website.herokuapp.com/MM/LAW/in-2004.tar.gz",
+        "filename": "in-2004.mtx",
+        "meta": {
+            "type": "Web"
+        }
+    },
+    "EU": {
+        "url": "https://sparse.tamu.edu/MM/LAW/eu-2005.tar.gz",
+        "filename": "eu-2005.mtx",
+        "meta": {
+            "type": "Hyperlink"
         },
     },
     "HW": {
@@ -227,11 +242,10 @@ DATASET_GROUP = {
     "medium": ["FB", "DB", "AM", "YT"],              # 600K - 3M edges (Standard benchmarks)
     "large": ["SK", "EU", "LJ", "HW", "UK"],         # 10M+ edges (Scalability & Memory testing)
 
-    "insertion": [ "PR", "EN", "FB",
-                   #"EU", "HW", "UK"
+    "insertion": [ "PR", "EN", "FB", "EU",
+                   #"HW", "UK"
                    ],
-    "dynamic": ["DB", "YT",
-                #"SK", "LJ"
+    "dynamic": ["DB", "YT", "SK", "LJ"
                 ],
 
     "tuning": ["PR", "EN", "FB", "DB", "YT"],
@@ -244,7 +258,7 @@ DATASET_GROUP = {
     "web": ["EU", "UK", "SK"],
 
     "mags_small": ["CA", "EN", "BK", "EA", "SL", "DB"],
-    "mags_large": ["AM", "YT",
-                   #"SK", "EU", "UK"
+    "mags_large": ["AM", "CN", "YT", "SK", "IN", "EU", "LJ"
+                   #"UK"
                    ]
 }
