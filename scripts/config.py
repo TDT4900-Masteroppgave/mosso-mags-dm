@@ -227,11 +227,11 @@ DATASET_GROUP = {
     "medium": ["FB", "DB", "AM", "YT"],              # 600K - 3M edges (Standard benchmarks)
     "large": ["SK", "EU", "LJ", "HW", "UK"],         # 10M+ edges (Scalability & Memory testing)
 
-    "insertion": [ "PR", "EN", "FB", "EU",
-                   #"HW", "UK"
+    "insertion": [ "PR", "EN", "FB",
+                   #"EU", "HW", "UK"
                    ],
-    "dynamic": ["DB", "YT", "SK",
-                #"LJ"
+    "dynamic": ["DB", "YT",
+                #"SK", "LJ"
                 ],
 
     "tuning": ["PR", "EN", "FB", "DB", "YT"],
@@ -244,7 +244,7 @@ DATASET_GROUP = {
     "web": ["EU", "UK", "SK"],
 
     "mags_small": ["CA", "EN", "BK", "EA", "SL", "DB"],
-    "mags_large": ["AM", "YT", "SK", "EU"
-                   #"UK"
+    "mags_large": ["AM", "YT",
+                   #"SK", "EU", "UK"
                    ]
 }
