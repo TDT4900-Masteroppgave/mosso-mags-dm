@@ -33,6 +33,7 @@ class BarChartPlotter(Plotter):
 
         plt.xlabel("")
         ax.set_yscale("log", base=10)
+        ax.set_ylim(bottom=1)
         ax.yaxis.set_minor_locator(ticker.NullLocator())
 
         plt.ylabel("Execution Time\n(microseconds)", fontsize=14, style='italic')

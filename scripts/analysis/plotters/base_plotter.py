@@ -21,7 +21,7 @@ class Plotter(ABC):
         "ds": {"color": "#56B4E9", "marker": "*"},             # Sky Blue (Okabe-Ito)
         "ds_thr": {"color": "#E6C122", "marker": "h"},         # Darkened Yellow (Accessibility contrast)
         "ds_sm_thr": {"color": "#882255", "marker": "X"},      # Wine (Paul Tol)
-        "mags": {"color": "#EE3377", "marker": "o"},           # Deep Indigo (Paul Tol)
+        "mags": {"color": "#002050", "marker": "o"},           # Deep Indigo (Paul Tol)
         "para_mags": {"color": "#88CCEE", "marker": ">"},      # Cyan (Paul Tol)
         "mags_dm": {"color": "#117733", "marker": "d"},        # Pine Green (Paul Tol)
         "para_mags_dm": {"color": "#999933", "marker": "P"}    # Olive (Paul Tol)
