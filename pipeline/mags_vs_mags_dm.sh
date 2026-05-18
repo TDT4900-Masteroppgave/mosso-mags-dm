@@ -1,0 +1,2 @@
+./run.sh benchmark --runs 3 --group mags_small --algorithm mags mags_dm para_mags para_mags_dm --p 30 &
+./run.sh benchmark --runs 3 --group mags_large --algorithm mags mags_dm para_mags para_mags_dm --p 30 &
