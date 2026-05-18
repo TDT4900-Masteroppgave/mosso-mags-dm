@@ -8,7 +8,7 @@ from scripts.config import PARAM_CONFIG
 
 def init_db(session_dir: Path) -> sqlite3.Connection:
     db_path = session_dir / "results.db"
-    return sqlite3.connect(str(db_path))
+    return sqlite3.connect(str(db_path), check_same_thread=False, timeout=15.0)
 
 def init_results_schema(conn: sqlite3.Connection, first_metric_keys: list[str]) -> None:
     """Creates the result table using a combination of base columns,
