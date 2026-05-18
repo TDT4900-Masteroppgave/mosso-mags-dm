@@ -76,7 +76,6 @@ class Experiment(ABC):
             self.datasets_to_run = get_datasets_to_run(self.args)
             setup_directories()
 
-            self.write_metadata()
             self.print_parameters()
 
             self.logger.rule("[bold]Preprocessing[/bold]")
@@ -86,6 +85,7 @@ class Experiment(ABC):
             self.print_dataset()
 
             self._build_algorithms()
+            self.write_metadata()
 
             self.logger.rule("[bold]Processing[/bold]")
             self.process()
