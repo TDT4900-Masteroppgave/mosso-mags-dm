@@ -3,9 +3,27 @@ import sqlite3
 import pandas as pd
 from pathlib import Path
 
+from scripts.config import PARAM_CONFIG
+
+
 def init_db(session_dir: Path) -> sqlite3.Connection:
     db_path = session_dir / "results.db"
     return sqlite3.connect(str(db_path))
+
+def init_results_schema(conn: sqlite3.Connection, first_metric_keys: list[str]) -> None:
+    """Creates the result table using a combination of base columns,
+    all possible parameters, and experiment-specific columns."""
+
+    columns = ["dataset", "algorithm", "run", "time", "ratio"]
+
+    columns.extend(list(PARAM_CONFIG.keys()))
+
+    for key in first_metric_keys:
+        if key not in columns:
+            columns.append(key)
+
+    empty_df = pd.DataFrame(columns=columns)
+    empty_df.to_sql("results", conn, if_exists="replace", index=False)
 
 def write_results_bulk(conn: sqlite3.Connection, df: pd.DataFrame) -> None:
     """Writes the entire DataFrame to the DB in one go."""

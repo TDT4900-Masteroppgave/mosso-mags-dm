@@ -38,6 +38,8 @@ class Experiment(ABC):
         self.db_conn = None
         self.datasets = {}
 
+        self._db_initialized = False
+
         missing_algos = [name for name in self.args.algorithm if name not in ALGORITHMS]
         if missing_algos:
             self.logger.error(f"Missing algorithms: {missing_algos}")
@@ -109,7 +111,12 @@ class Experiment(ABC):
 
     def record_result(self, metric: dict) -> None:
         self.results.append(metric)
+
         if self.db_conn:
+            if not self._db_initialized:
+                db.init_results_schema(self.db_conn, list(metric.keys()))
+                self._db_initialized = True
+
             db.write_result(self.db_conn, metric)
 
     def _handle_results(self) -> None:

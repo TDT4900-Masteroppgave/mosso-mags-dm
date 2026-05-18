@@ -97,6 +97,7 @@ class Plotter(ABC):
         possible_metrics = ["time", "ratio", "time_micros", "accumulated_time_sec"]
         for col in possible_metrics:
             if col in sub.columns:
+                sub[col] = pd.to_numeric(sub[col], errors='coerce')
                 numeric_cols.append(col)
 
         param_keys = [k for k in PARAM_CONFIG.keys() if k in sub.columns]
