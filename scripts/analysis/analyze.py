@@ -2,6 +2,7 @@
 
 Usage: ./run.sh analyze
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from rich.panel import Panel
 
 from scripts.analysis.plotters import Plotter
 from scripts.analysis.plotters.base_plotter import get_plotter
-from scripts.analysis.sessions import SessionInfo, load_session, scan_sessions
+from scripts.analysis.sessions import SessionInfo, load_session, merge_sessions, scan_sessions
 from scripts.config import EXPERIMENT_DIR
 
 console = Console(highlight=False)
@@ -38,9 +39,17 @@ _STYLE = questionary.Style([
 
 
 def _fmt_ts(ts: str) -> str:
+    if ts.startswith("merged_"):
+        return f"merged {_fmt_ts(ts[7:])}"
     if len(ts) >= 15:
         return f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} {ts[9:11]}:{ts[11:13]}:{ts[13:15]}"
     return ts
+
+
+def _session_label(s: SessionInfo) -> str:
+    algos = ", ".join(s.algorithms) if s.algorithms else "?"
+    ds_str = f"[{', '.join(s.datasets)}]" if s.datasets else "[?]"
+    return f"{_fmt_ts(s.timestamp)}   algos: {algos}   datasets: {ds_str}"
 
 
 def _pick_type(grouped: dict[str, list[SessionInfo]]) -> str | None:
@@ -57,13 +66,8 @@ def _pick_type(grouped: dict[str, list[SessionInfo]]) -> str | None:
 
 
 def _pick_session(sessions: list[SessionInfo]) -> SessionInfo | None:
-    def label(s: SessionInfo) -> str:
-        algos = ", ".join(s.algorithms) if s.algorithms else "?"
-        ds_str = f"[{', '.join(s.datasets)}]" if s.datasets else "[?]"
-        return f"{_fmt_ts(s.timestamp)}   algos: {algos}   datasets: {ds_str}"
-
     choices = [
-        Choice(title=label(s), value=s)
+        Choice(title=_session_label(s), value=s)
         for s in sessions if s.has_db
     ]
 
@@ -77,6 +81,29 @@ def _pick_session(sessions: list[SessionInfo]) -> SessionInfo | None:
         style=_STYLE,
         instruction="(↑/↓ arrows, enter to confirm)",
     ).ask()
+
+
+def _pick_merge_sessions(sessions: list[SessionInfo]) -> list[SessionInfo] | None:
+    choices = [
+        Choice(title=_session_label(s), value=s)
+        for s in sessions if s.has_db
+    ]
+
+    if len(choices) < 2:
+        console.print("[yellow]Need at least two analyzable sessions to merge.[/yellow]")
+        return None
+
+    while True:
+        selected = questionary.checkbox(
+            "Sessions to merge (space to mark, enter to confirm):",
+            choices=choices,
+            style=_STYLE,
+        ).ask()
+        if selected is None:
+            return None
+        if len(selected) >= 2:
+            return selected
+        console.print("[yellow]Select at least two sessions.[/yellow]")
 
 
 def _pick_algos(available: list[str]) -> list[str] | None:
@@ -147,7 +174,43 @@ def _confirm(msg: str, default: bool = False) -> bool:
     return bool(res)
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Interactive analysis CLI.")
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Select multiple sessions of the same non-Bayesian experiment type and merge them before analysis.",
+    )
+    return parser.parse_args()
+
+
+def _merge_flow(btype: str, sessions: list[SessionInfo]) -> SessionInfo | None:
+    if btype == "bayesian":
+        console.print("[yellow]Bayesian sessions are not supported by merge.[/yellow]")
+        return None
+
+    selected = _pick_merge_sessions(sessions)
+    if not selected:
+        return None
+
+    summary = "\n".join(f"- {_session_label(s)}" for s in selected)
+    console.print(Panel(summary, title="Merge Sessions", border_style="cyan"))
+    if not _confirm(f"Create merged {btype} session from {len(selected)} sessions?", default=True):
+        return None
+
+    try:
+        merged = merge_sessions(selected, Path(EXPERIMENT_DIR))
+    except Exception as e:
+        console.print(f"[red]✗ Merge failed:[/red] {e}")
+        return None
+
+    console.print(f"[green]✓[/green] Merged session created: [bold]{merged.path}[/bold]\n")
+    return merged
+
+
 def main() -> None:
+    args = _parse_args()
+
     console.clear()
     console.rule("[bold]MOSSO Analysis[/bold]")
     console.print(f"[dim]Scanning {EXPERIMENT_DIR} ...[/dim]\n")
@@ -161,7 +224,7 @@ def main() -> None:
     if not btype:
         return
 
-    session = _pick_session(grouped[btype])
+    session = _merge_flow(btype, grouped[btype]) if args.merge else _pick_session(grouped[btype])
     if not session:
         return
 
