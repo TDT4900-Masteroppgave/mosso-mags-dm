@@ -14,10 +14,10 @@ PARAM_CONFIG = {
     "b": {"description": "top candidates", "default": 5, "bounds": (1, 20), "step": 1, "type": int},
     "h": {"description": "hashes", "default": 4, "bounds": (2, 100), "step": 2, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
-    "thr_end": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "step": 0.05, "type": float},
-    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (50, 1000), "step": 50,
+    "thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "step": 0.05, "type": float},
+    "cap": {"description": "cap of coarse cluster buckets", "default": 100, "bounds": (10, 120), "step": 10,
             "type": int},
-    "T": {"description": "iterations over partitions", "default": 50, "bounds": (5, 200), "step": 10, "type": int},
+    "T": {"description": "iterations over partitions", "default": 1, "bounds": (5, 200), "step": 10, "type": int},
     "p": {"description": "number of threads", "default": 30, "type": int},
 }
 
@@ -53,7 +53,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "template": ["e", "c", "interval", "h", "thr_end"],
+        "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
     "cap": {
@@ -74,14 +74,14 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/divide_strategy_thr",
         "type": "mosso",
-        "template": ["e", "c", "interval", "thr_start", "thr_end", "T"],
+        "template": ["e", "c", "interval", "thr_start", "thr", "T"],
         "binary_file": "mosso.jar",
     },
     "ds_sm_thr": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/divide_strategy_similarity_measure_thr",
         "type": "mosso",
-        "template": ["e", "c", "interval", "h", "thr_start", "thr_end", "T"],
+        "template": ["e", "c", "interval", "h", "thr_start", "thr", "T"],
         "binary_file": "mosso.jar",
     },
     "mags": {
