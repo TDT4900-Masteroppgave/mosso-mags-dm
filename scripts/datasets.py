@@ -197,6 +197,7 @@ def calculate_topology(file_path: str) -> tuple[int, int, float, int, float]:
 
     return num_nodes, edge_count, round(avg_deg, 2), max_deg, density
 
+
 def _write_algorithm_format(algo_type: str, stream_type: str, temp_clean: Path, master_stream: Path, out_path: Path):
     """Handles the specific file mapping based on algorithm and stream type."""
     if stream_type == "IO":
@@ -213,12 +214,13 @@ def _write_algorithm_format(algo_type: str, stream_type: str, temp_clean: Path, 
             extract_batch_snapshot(str(master_stream), str(out_path))
 
 
-def _process_dataset_pipeline(ds: dict, required_algos: set, logger, prep_log: dict) -> dict:
+def _process_dataset_pipeline(ds: dict, required_algos: set, logger, prep_log: dict, dynamic_datasets: list) -> dict:
     """Manages the generation pipeline for a single dataset and updates the config."""
     short_name = ds.get("short_name", "N/A")
     raw_path = Path(download_dataset(ds.get("url"), ds.get("filename")))
 
-    is_dynamic = "dynamic" in sys.argv and short_name in DATASET_GROUP.get("dynamic", [])
+    is_dynamic = short_name in dynamic_datasets
+
     stream_type = "FD" if is_dynamic else "IO"
     p_del_val = 0.1 if stream_type == "FD" else 0.0
 
@@ -242,7 +244,8 @@ def _process_dataset_pipeline(ds: dict, required_algos: set, logger, prep_log: d
 
     # Build Intermediates and Formats
     if needs_building:
-        needs_temp_clean = not prep_log[short_name].get("metadata") or (stream_type == "IO") or (stream_type == "FD" and not master_stream.exists())
+        needs_temp_clean = not prep_log[short_name].get("metadata") or (stream_type == "IO") or (
+                    stream_type == "FD" and not master_stream.exists())
 
         if needs_temp_clean and not temp_clean.exists():
             clean_and_write(str(raw_path), str(temp_clean), "mags")
@@ -285,8 +288,11 @@ def _process_dataset_pipeline(ds: dict, required_algos: set, logger, prep_log: d
     return {algo: str(path) for algo, path in formatted_paths.items()}
 
 
-def prepare_datasets(datasets_to_run, active_algos, logger) -> dict:
+def prepare_datasets(datasets_to_run, active_algos, logger, dynamic_datasets: list = None) -> dict:
     """Main orchestrator for preparing datasets."""
+    if dynamic_datasets is None:
+        dynamic_datasets = []
+
     required_algo_types = {config.get("type") for config in active_algos.values() if config.get("type")}
     log_file = DATASETS_DIR / "preprocessing_log.json"
 
@@ -298,7 +304,9 @@ def prepare_datasets(datasets_to_run, active_algos, logger) -> dict:
     prepared_paths = {}
     for ds in datasets_to_run:
         with logger.status(f"[bold cyan]Preprocessing Dataset: {ds.get('filename', 'N/A')} [/bold cyan]"):
-            prepared_paths[ds.get("short_name")] = _process_dataset_pipeline(ds, required_algo_types, logger, prep_log)
+            prepared_paths[ds.get("short_name")] = _process_dataset_pipeline(
+                ds, required_algo_types, logger, prep_log, dynamic_datasets
+            )
 
             # Save progress incrementally after each dataset finishes
             with open(log_file, "w", encoding="utf-8") as f:

@@ -82,7 +82,7 @@ class Experiment(ABC):
 
             self.logger.rule("[bold]Preprocessing[/bold]")
             self.datasets = prepare_datasets(
-                self.datasets_to_run, self.active_algos, self.logger
+                self.datasets_to_run, self.active_algos, self.logger, self.args.dynamic
             )
             self.print_dataset()
 
@@ -246,6 +246,7 @@ class Experiment(ABC):
         data_group = parser.add_mutually_exclusive_group()
         data_group.add_argument("--group", nargs="+", choices=["all"] + list(DATASET_GROUP.keys()), default=["all"])
         data_group.add_argument("--dataset", nargs='+', choices=list(DATASETS.keys()), type=str)
+        parser.add_argument("--dynamic", nargs='*', default=[], type=str, help="List of datasets to treat as dynamic (FD)")
 
         parser.add_argument("--algorithm", nargs='+')
         parser.add_argument("--is-local", action="store_true")
