@@ -116,6 +116,14 @@ ALGORITHMS = {
         "template": ["p"],
         "binary_file": "pmags_dm",
     },
+    "proposed": {
+        "repo": BASE_REPO_URL,
+        "branch": "mags_strat/similarity_measure_thr",
+        "type": "mosso",
+        "params": {"e": 2, "c": 50, "h": 5, "thr": 0.2},
+        "template": ["e", "c", "interval", "h", "thr"],
+        "binary_file": "mosso.jar",
+    },
 }
 
 DATASETS = {
