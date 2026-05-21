@@ -116,7 +116,7 @@ ALGORITHMS = {
         "template": ["p"],
         "binary_file": "pmags_dm",
     },
-    "proposed": {
+    "full_solution": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
