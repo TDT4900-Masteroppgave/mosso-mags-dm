@@ -153,7 +153,7 @@ ALGORITHMS = {
         "branch": "mags_strat/similarity_measure",
         "type": "mosso",
         "params": {"e": 2, "c": 50, "h": 5},
-        "template": ["e", "c", "interval", "h", "thr"],
+        "template": ["e", "c", "interval", "h"],
         "binary_file": "mosso.jar",
     },
     "full_solution": {
