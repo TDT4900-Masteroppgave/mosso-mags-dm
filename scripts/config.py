@@ -18,7 +18,7 @@ PARAM_CONFIG = {
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
     "thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 0.5), "step": 0.10, "type": float},
     #"thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 0.5), "step": 0.05, "type": float},
-    "cap": {"description": "cap of coarse cluster buckets", "default": 60, "bounds": (10, 120), "step": 20,
+    "cap": {"description": "cap of coarse cluster buckets", "default": 60, "bounds": (0, 120), "step": 20,
     #"cap": {"description": "cap of coarse cluster buckets", "default": 60, "bounds": (10, 120), "step": 10,
             "type": int},
     "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 10), "step": 10, "type": int},
