@@ -8,7 +8,7 @@ ALGORITHMS_DIR = Path("algorithms")
 BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
 PARAM_CONFIG = {
-    "c": {"description": "sample number", "default": 120, "bounds": (10, 200), "step": 10, "type": int},
+    "c": {"description": "sample number", "default": 120, "bounds": (10, 120), "step": 10, "type": int},
     "e": {"description": "escape", "default": 3, "bounds": (1, 5), "step": 1, "type": int},
     "interval": {"description": "interval", "default": 1000, "type": int},
     "b": {"description": "top candidates", "default": 1, "bounds": (1, 3), "step": 1, "type": int},
