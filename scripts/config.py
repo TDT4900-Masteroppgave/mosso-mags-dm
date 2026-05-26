@@ -31,7 +31,7 @@ ALGORITHMS = {
         "type": "mosso",
         "template": ["e", "c", "interval"]
     },
-    "kdd20-mosso": {
+    "MoSSo": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
         "params": {"c": 120, "e": 3},
