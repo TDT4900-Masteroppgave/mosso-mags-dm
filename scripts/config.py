@@ -173,7 +173,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "params": {"e": 4, "c": 10, "h": 1, "thr": 0.3},
+        "params": {"e": 4, "c": 10, "h": 1, "thr": 0.5},
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
