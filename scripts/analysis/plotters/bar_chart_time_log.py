@@ -8,11 +8,29 @@ from scripts.analysis.plotters.base_plotter import Plotter, register
 @register
 class BarChartPlotter(Plotter):
     plotter_id = "bar_chart_time_log"
-    description = "Bar chart comparing execution time logarithmic scale"
+    description = "Bar chart comparing time (logarithmic scale)"
 
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         self.set_chart_theme()
 
+        suffix = "_".join(algos)
+
+        # 1. Generate and save the statistics table
+        stats_df = data.groupby(["dataset", "algorithm"])["time"].agg(
+            Mean='mean',
+            Median='median',
+            Min='min',
+            Max='max',
+            StdDev='std'
+        ).reset_index()
+
+        for col in ['Mean', 'Median', 'Min', 'Max', 'StdDev']:
+            stats_df[col] = stats_df[col].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
+
+        csv_path = out_dir / f"runtime_bar_chart_log_stats_{suffix}.csv"
+        stats_df.to_csv(csv_path, index=False)
+
+        # 2. Generate the plot
         fig, ax = plt.subplots(figsize=(6, 3.5))
 
         palette = [self.get_algo_style(algo)["color"] for algo in algos]
@@ -45,9 +63,8 @@ class BarChartPlotter(Plotter):
 
         plt.tight_layout()
 
-        suffix = "_".join(algos)
         png_path = out_dir / f"runtime_bar_chart_{suffix}.png"
         plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
         plt.close()
 
-        return [png_path]
+        return [png_path, csv_path]

@@ -2,7 +2,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from optuna.exceptions import OptunaError
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -131,23 +130,39 @@ class OptunaPlotter(Plotter):
             plt.xlabel(time_label, fontsize=14, style='italic')
             plt.ylabel("relative size", fontsize=14, style='italic')
 
-            use_t_min = kdd_t_min if kdd_t_min < float('inf') else pareto_t_min
-            use_t_max = kdd_t_max if kdd_t_max > float('-inf') else pareto_t_max
-            use_r_min = kdd_r_min if kdd_r_min < float('inf') else pareto_r_min
-            use_r_max = kdd_r_max if kdd_r_max > float('-inf') else pareto_r_max
+            # Ensure we have Pareto line data points to bound our axes
+            if pareto_t_max > float('-inf'):
 
-            if use_t_max > float('-inf'):
-                t_pad = (use_t_max - use_t_min) * 0.05 if use_t_max > use_t_min else use_t_max * 0.05
-                r_pad = (use_r_max - use_r_min) * 0.05 if use_r_max > use_r_min else use_r_max * 0.05
+                # --- 1. MAIN WINDOW LIMITS (Strictly bound to the Pareto lines for X) ---
+                # Calculate margins relative only to the Pareto front's true footprint
+                t_range_line = pareto_t_max - pareto_t_min
+                t_pad_main = t_range_line * 0.03 if t_range_line > 0 else 1.0
 
-                if t_pad == 0: t_pad = 0.01
-                if r_pad == 0: r_pad = 0.01
+                # Limit X-axis strictly to the maximum point on the Pareto frontiers
+                ax.set_xlim(max(0, pareto_t_min - t_pad_main), pareto_t_max + t_pad_main)
 
-                axins.set_xlim(max(0, use_t_min - t_pad), use_t_max + t_pad)
-                axins.set_ylim(max(0, use_r_min - r_pad), use_r_max + r_pad)
+                # (Optional) We remove ax.set_ylim(...) here so Matplotlib can
+                # automatically scale the Y-axis to include all background points.
+
+                # --- 2. INSET WINDOW LIMITS (Strictly bound to kdd20-mosso Pareto line) ---
+                # Check if kdd20-mosso Pareto data was captured, fallback to global Pareto lines if not
+                use_inset_t_min = kdd_t_min if kdd_t_min < float('inf') else pareto_t_min
+                use_inset_t_max = kdd_t_max if kdd_t_max > float('-inf') else pareto_t_max
+                use_inset_r_min = kdd_r_min if kdd_r_min < float('inf') else pareto_r_min
+                use_inset_r_max = kdd_r_max if kdd_r_max > float('-inf') else pareto_r_max
+
+                # Add a tiny 2% padding for the inset window
+                t_inset_pad = (use_inset_t_max - use_inset_t_min) * 0.02 if use_inset_t_max > use_inset_t_min else 1.0
+                r_inset_pad = (use_inset_r_max - use_inset_r_min) * 0.02 if use_inset_r_max > use_inset_r_min else 0.01
+
+                axins.set_xlim(max(0, use_inset_t_min - t_inset_pad), use_inset_t_max + t_inset_pad)
+                axins.set_ylim(max(0, use_inset_r_min - r_inset_pad), use_inset_r_max + r_inset_pad)
+
+                # --- FORCE FINER Y-TICKS (0.01 steps) ---
+                import matplotlib.ticker as ticker
+                axins.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
 
                 ax.indicate_inset_zoom(axins, edgecolor="black", alpha=0.5, linewidth=1.5)
-
                 axins.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
                 axins.tick_params(axis='both', which='major', labelsize=8)
 
@@ -211,48 +226,6 @@ class OptunaPlotter(Plotter):
             console.print(table)
 
             optuna.logging.set_verbosity(optuna.logging.WARNING)
-
-            db_path = None
-            for parent in out_dir.parents:
-                potential_db = parent / "optuna_study.db"
-                if potential_db.exists():
-                    db_path = potential_db
-                    break
-
-            if db_path:
-                storage_url = f"sqlite:///{db_path}"
-                console.print("\n[bold cyan]=== GLOBAL PARETO CONFIGURATIONS (ACROSS ALL DATASETS) ===[/bold cyan]")
-
-                for algo_name in algos:
-                    try:
-                        study = optuna.load_study(study_name=algo_name, storage=storage_url)
-                        pareto_trials = study.best_trials
-
-                        if not pareto_trials:
-                            continue
-
-                        console.print(f"\n[bold green]   {algo_name}[/bold green]")
-                        for trial in pareto_trials:
-                            avg_time = trial.values[0]
-                            avg_ratio = trial.values[1]
-
-                            console.print(f"  Trial {trial.number} | Time: {avg_time:.6f} | Ratio: {avg_ratio:.4f}")
-
-                            formatted_params = []
-                            for k, v in trial.params.items():
-                                if isinstance(v, float):
-                                    if v.is_integer():
-                                        formatted_params.append(f"{k}: {int(v)}")
-                                    else:
-                                        formatted_params.append(f"{k}: {v:.2f}")
-                                else:
-                                    formatted_params.append(f"{k}: {v}")
-                            params_str = ", ".join(formatted_params)
-
-                            console.print(f"    [italic]Params:[/italic] [bold yellow]{params_str}[/bold yellow]")
-                    except OptunaError as e:
-                        print(f"[bold red]Error loading study for {algo_name}: {e}[/bold red]")
-                        return generated_files
 
             txt_path = out_dir / f"pareto_summary_tables.txt"
             console.save_text(str(txt_path))

@@ -93,8 +93,8 @@ class Plotter(ABC):
         out_dir.mkdir(parents=True, exist_ok=True)
 
         group_cols = ["dataset", "algorithm"]
-        optional_group_cols = ["change_ratio", "param", "trial", "run", "edges_processed", "edges_evaluated",
-                               "power_of_2", "is_streaming", "param_name"]
+        optional_group_cols = ["change_ratio", "param", "trial", "run", "edges_processed", "changes_evaluated",
+                               "edges_evaluated", "power_of_2", "is_streaming", "param_name"]
         for col in optional_group_cols:
             if col in sub.columns:
                 group_cols.append(col)

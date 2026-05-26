@@ -24,7 +24,7 @@ EXPERIMENT_PLOTS = {
     "compression_checkpoints": ["line_chart_compression"],
     "sweep": ["line_chart_sweep"],
     "scalability": ["line_chart_scalability"],
-    "bayesian": ["pareto_front", "trial_history"],
+    "bayesian": ["pareto_front", "pareto_compare_baseline", "trial_history", "param_importance"],
 }
 
 _STYLE = questionary.Style([
