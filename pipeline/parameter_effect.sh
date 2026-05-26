@@ -1,5 +1,8 @@
 #!/bin/bash
 
+./run.sh sweep --algorithm MoSSo --dataset PR EN FB DB YT --dynamic DB YT --param c --range 10 240 10 &
+./run.sh sweep --algorithm MoSSo --dataset PR EN FB DB YT --dynamic DB YT --param e --range 1 10 1 &
+
 # Array of sample numbers for the sweep
 SAMPLE_SIZES=(240 120 60 30)
 
