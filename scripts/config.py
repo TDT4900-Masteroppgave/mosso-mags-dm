@@ -8,14 +8,14 @@ ALGORITHMS_DIR = Path("algorithms")
 BASE_REPO_URL = "https://github.com/TDT4900-Masteroppgave/mosso-mags-dm.git"
 
 PARAM_CONFIG = {
-    "c": {"description": "sample number", "default": 120, "bounds": (30, 240), "step": 10, "type": int},
+    "c": {"description": "sample number", "default": 120, "bounds": (10, 240), "step": 10, "type": int},
     "e": {"description": "escape", "default": 3, "bounds": (1, 5), "step": 1, "type": int},
     "interval": {"description": "interval", "default": 1000, "type": int},
     "b": {"description": "top candidates", "default": 1, "bounds": (1, 5), "step": 1, "type": int},
     "h": {"description": "hashes", "default": 4, "bounds": (1, 5), "step": 1, "type": int},
     #"h": {"description": "hashes", "default": 4, "bounds": (1, 50), "step": 10, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
-    "thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 0.5), "step": 0.05, "type": float},
+    "thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 0.5), "step": 0.1, "type": float},
     "cap": {"description": "cap of coarse cluster buckets", "default": 60, "bounds": (10, 120), "step": 10,
             "type": int},
     "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 10), "step": 10, "type": int},
@@ -124,7 +124,7 @@ ALGORITHMS = {
     "mosso_best_compression": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
-        "params": {"e": 3, "c": 200},
+        "params": {"e": 2, "c": 236},
         "type": "mosso",
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
@@ -132,7 +132,7 @@ ALGORITHMS = {
     "mosso_fastest_time": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
-        "params": {"e": 3, "c": 10},
+        "params": {"e": 2, "c": 30},
         "type": "mosso",
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
