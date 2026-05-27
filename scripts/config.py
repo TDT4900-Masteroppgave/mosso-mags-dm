@@ -26,7 +26,7 @@ ALGORITHMS = {
     "local": {
         "target_dir": ".",
         "type": "mosso",
-        "template": ["e", "c", "interval"]
+        "template": ["e", "c", "interval", "h", "b", "thr"]
     },
     "MoSSo": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",

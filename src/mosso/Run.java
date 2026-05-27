@@ -26,8 +26,12 @@ public class Run {
             final int probability = Integer.parseInt(args[3]);
             final int n_samples = Integer.parseInt(args[4]);
             final int interval = Integer.parseInt(args[5]);
-            System.out.println("escape probability : " + probability + ", n_samples : " + n_samples + ", TT : " + interval);
-            module = new MoSSo(false, probability, n_samples, interval);
+            final int h = Integer.parseInt(args[6]);
+            final int b = Integer.parseInt(args[7]);
+            final float thr = Float.parseFloat(args[8]);
+            System.out.println("escape probability : " + probability + ", n_samples : " + n_samples + ", TT : "
+                    + interval + "h: " + h + "b:" + b + "thr:" + thr);
+            module = new MoSSo(false, probability, n_samples, interval, h, b, thr);
         } else if (sumMode.compareTo("simple") == 0) {
             final int probability = Integer.parseInt(args[3]);
             final int n_samples = Integer.parseInt(args[4]);
@@ -38,7 +42,7 @@ public class Run {
             final int interval = Integer.parseInt(args[3]);
             System.out.println("interval : " + interval);
             module = new MoSSoMCMC(false, interval);
-        } else if(sumMode.compareTo("sgreedy") == 0) {
+        } else if (sumMode.compareTo("sgreedy") == 0) {
             final int interval = Integer.parseInt(args[3]);
             System.out.println("interval : " + interval);
             module = new MoSSoGreedy(false, interval);

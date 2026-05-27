@@ -1,16 +1,19 @@
 package mosso.algorithm;
 
 import it.unimi.dsi.fastutil.ints.*;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import jdk.jshell.spi.ExecutionControl;
 import mosso.SupernodeHelper;
+
+import java.util.Comparator;
+import java.util.PriorityQueue;
+
 import static java.lang.Long.min;
 
 public class MoSSo extends SupernodeHelper {
     private final int INF = 0x7FFFFFFF;
     private int iteration = 0;
     private int escape;
-    private int n_hash;
+    private int h;
     private int sampleNumber;
     private long start;
 
@@ -21,9 +24,18 @@ public class MoSSo extends SupernodeHelper {
     private int ecnt = 0;
     private int interval;
 
-    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval){
+    // hit_limit corresponds to the parameter 'b' in the Mags-DM article
+    private final int b;
+
+    private Int2ObjectOpenHashMap<IntOpenHashSet> excludeMap = new Int2ObjectOpenHashMap<>();
+
+    // Make this a dynamic variable instead of a hardcoded constant
+    private final float thr;
+
+    public MoSSo(boolean directed, final int _escape, final int _sample, final int _interval,
+                 final int _h, final int _b, final float _thr) {
         super(directed);
-        if(directed){
+        if (directed) {
             try {
                 throw new ExecutionControl.NotImplementedException("Directed version is NOT_IMPLEMENTED");
             } catch (ExecutionControl.NotImplementedException e) {
@@ -32,17 +44,22 @@ public class MoSSo extends SupernodeHelper {
             }
         }
         escape = _escape;
-        n_hash = 4;
+        h = _h;
+        b = _b;
+        thr = _thr;
         sampleNumber = _sample;
         interval = _interval;
+        // Initialize the threshold from the constructor parameter
+
+
         start = System.currentTimeMillis();
         hash_initialization();
     }
 
-    private void hash_initialization(){
-        minHash = new IntArrayList[n_hash];
-        hf = new IntArrayList[n_hash];
-        for(int i = 0; i< n_hash; i++){
+    private void hash_initialization() {
+        minHash = new IntArrayList[h];
+        hf = new IntArrayList[h];
+        for (int i = 0; i < h; i++) {
             minHash[i] = new IntArrayList();
             hf[i] = new IntArrayList();
         }
@@ -51,15 +68,16 @@ public class MoSSo extends SupernodeHelper {
     @Override
     public void addVertex(int idx) {
         super.addVertex(idx);
-        for (int i = 0; i< n_hash; i++){
+        for (int i = 0; i < h; i++) {
             minHash[i].add(INF);
             hf[i].add(randInt(1, 0x7FFFFFFE));
         }
     }
 
-    private long getPi(final int Su, final int Sv){
-        long pi = getSize(Su); pi *= getSize(Sv);
-        if(Su == Sv){
+    private long getPi(final int Su, final int Sv) {
+        long pi = getSize(Su);
+        pi *= getSize(Sv);
+        if (Su == Sv) {
             pi -= getSize(Sv);
             pi /= 2;
         }
@@ -110,7 +128,7 @@ public class MoSSo extends SupernodeHelper {
         }
     }
 
-    private long getDelta(final int R, final int S, IntArrayList Nv, Int2IntOpenHashMap edgeDelta){
+    private long getDelta(final int R, final int S, IntArrayList Nv, Int2IntOpenHashMap edgeDelta) {
         int rDelta = edgeDelta.get(R), sDelta = edgeDelta.get(S);
 
         // compute Delta of |P| + |Cp| + |Cm|
@@ -118,9 +136,9 @@ public class MoSSo extends SupernodeHelper {
         long edgeCount, newEdgeCount, pi, npi, cost, newCost;
 
         Int2IntOpenHashMap extendedNeighbors = new Int2IntOpenHashMap(getRawNeighbors(S));
-        for(Int2IntMap.Entry U: getSupernodeNeighborsAndWeights(R)){
+        for (Int2IntMap.Entry U : getSupernodeNeighborsAndWeights(R)) {
             extendedNeighbors.addTo(U.getIntKey(), 0);
-            if(U.getIntKey() == S) continue;
+            if (U.getIntKey() == S) continue;
             // compute delta between supernode U and supernode R
             edgeCount = U.getIntValue() / (U.getIntKey() == R ? 2 : 1);
             newEdgeCount = edgeCount - edgeDelta.getOrDefault(U.getIntKey(), 0);
@@ -128,10 +146,11 @@ public class MoSSo extends SupernodeHelper {
             npi = pi - getSize(U.getIntKey()) + (U.getIntKey() == R ? 1 : 0);
             cost = min(edgeCount, pi - edgeCount + 1);
             newCost = min(newEdgeCount, npi - newEdgeCount + 1);
-            before += cost; after += newCost;
+            before += cost;
+            after += newCost;
         }
-        for(Int2IntMap.Entry U: extendedNeighbors.int2IntEntrySet()){
-            if(U.getIntKey() == R) continue;
+        for (Int2IntMap.Entry U : extendedNeighbors.int2IntEntrySet()) {
+            if (U.getIntKey() == R) continue;
             // compute delta between supernode U and supernode S
             edgeCount = U.getIntValue() / (U.getIntKey() == S ? 2 : 1);
             newEdgeCount = edgeCount + edgeDelta.getOrDefault(U.getIntKey(), 0);
@@ -139,7 +158,8 @@ public class MoSSo extends SupernodeHelper {
             npi = pi + getSize(U.getIntKey());
             cost = min(edgeCount, pi - edgeCount + 1);
             newCost = min(newEdgeCount, npi - newEdgeCount + 1);
-            before += cost; after += newCost;
+            before += cost;
+            after += newCost;
         }
 
         // compute delta between supernode R and supernode S
@@ -149,81 +169,84 @@ public class MoSSo extends SupernodeHelper {
         npi = pi + getSize(R) - getSize(S) - 1;
         cost = min(edgeCount, pi - edgeCount + 1);
         newCost = min(newEdgeCount, npi - newEdgeCount + 1);
-        before += cost; after += newCost;
+        before += cost;
+        after += newCost;
 
         long delta = (after - before);
         return delta;
     }
 
-    private void doNodalUpdate(final int v, final int R, final int S, IntArrayList Nv){
+    private void doNodalUpdate(final int v, final int R, final int S, IntArrayList Nv) {
         // update edge information
         // remove every edge containing node v
-        for(int u: Nv){
+        for (int u : Nv) {
             updateEdge(v, u, false, false);
         }
-        for(int U: P.getNeighbors(R)){
-            for(int _u: getMembers(U)){
-                if(v == _u) continue;
-                Cm.deleteEdge(v, _u); Cm.deleteEdge(_u, v);
+        for (int U : P.getNeighbors(R)) {
+            for (int _u : getMembers(U)) {
+                if (v == _u) continue;
+                Cm.deleteEdge(v, _u);
+                Cm.deleteEdge(_u, v);
             }
         }
         // move subnode v from supernode R to supernode S
         moveNode(v, R, S);
         // restore every edge containing node v
-        for(int U: P.getNeighbors(S)){
-            for(int _u: getMembers(U)){
-                if(v == _u) continue;
-                Cm.addEdge(v, _u); Cm.addEdge(_u, v);
+        for (int U : P.getNeighbors(S)) {
+            for (int _u : getMembers(U)) {
+                if (v == _u) continue;
+                Cm.addEdge(v, _u);
+                Cm.addEdge(_u, v);
             }
         }
-        for(int u: Nv){
+        for (int u : Nv) {
             updateEdge(v, u, true, false);
         }
 
         // update compressedData
         Int2IntOpenHashMap extendedNbrs_R = new Int2IntOpenHashMap(getRawNeighbors(R));
         Int2IntOpenHashMap extendedNbrs_S = new Int2IntOpenHashMap(getRawNeighbors(S));
-        for(int U: getSupernodeNeighbors(R)) {
+        for (int U : getSupernodeNeighbors(R)) {
             extendedNbrs_S.addTo(U, 0);
         }
-        for(int U: P.getNeighbors(R)) {
+        for (int U : P.getNeighbors(R)) {
             extendedNbrs_R.addTo(U, 0);
         }
 
         long edgeCount, pi;
-        for(Int2IntMap.Entry U: extendedNbrs_R.int2IntEntrySet()) {
-            if(U.getIntKey() == S) continue;
+        for (Int2IntMap.Entry U : extendedNbrs_R.int2IntEntrySet()) {
+            if (U.getIntKey() == S) continue;
             // update connection between supernode R and supernode U
             edgeCount = U.getIntValue() / (U.getIntKey() == R ? 2 : 1);
             pi = getPi(R, U.getIntKey());
-            if(P.getEdgeCount(R, U.getIntKey()) > 0){
-                if(edgeCount < pi - edgeCount + 1L) updateSuperedge(R, U.getIntKey(), false);
+            if (P.getEdgeCount(R, U.getIntKey()) > 0) {
+                if (edgeCount < pi - edgeCount + 1L) updateSuperedge(R, U.getIntKey(), false);
             } else {
-                if(edgeCount > pi - edgeCount + 1L) updateSuperedge(R, U.getIntKey(), true);
+                if (edgeCount > pi - edgeCount + 1L) updateSuperedge(R, U.getIntKey(), true);
             }
         }
-        for(Int2IntMap.Entry U: extendedNbrs_S.int2IntEntrySet()){
-            if(U.getIntKey() == R) continue;
+        for (Int2IntMap.Entry U : extendedNbrs_S.int2IntEntrySet()) {
+            if (U.getIntKey() == R) continue;
             // update connection between supernode S and supernode U
             edgeCount = U.getIntValue() / (U.getIntKey() == S ? 2 : 1);
             pi = getPi(S, U.getIntKey());
-            if(P.getEdgeCount(S, U.getIntKey()) > 0){
-                if(edgeCount < pi - edgeCount + 1L) updateSuperedge(S, U.getIntKey(), false);
+            if (P.getEdgeCount(S, U.getIntKey()) > 0) {
+                if (edgeCount < pi - edgeCount + 1L) updateSuperedge(S, U.getIntKey(), false);
             } else {
-                if(edgeCount > pi - edgeCount + 1L) updateSuperedge(S, U.getIntKey(), true);
+                if (edgeCount > pi - edgeCount + 1L) updateSuperedge(S, U.getIntKey(), true);
             }
         }
         // update connection between supernode R and supernode S
         edgeCount = getEdgeCount(R, S);
         pi = getPi(R, S);
-        if(P.getEdgeCount(R, S) > 0){
-            if(edgeCount < pi - edgeCount + 1L) updateSuperedge(R, S, false);
+        if (P.getEdgeCount(R, S) > 0) {
+            if (edgeCount < pi - edgeCount + 1L) updateSuperedge(R, S, false);
         } else {
-            if(edgeCount > pi - edgeCount + 1L) updateSuperedge(S, R, true);
+            if (edgeCount > pi - edgeCount + 1L) updateSuperedge(S, R, true);
         }
     }
 
-    private boolean tryNodalUpdate(final int v, int _S){
+    private boolean tryNodalUpdate(final int v, int _S) {
         final int R = V.getInt(v);
         int S = _S;
         if (R == _S) {
@@ -234,7 +257,7 @@ public class MoSSo extends SupernodeHelper {
         Int2IntOpenHashMap edgeDelta = new Int2IntOpenHashMap();
 
         // nodes in Nv are affected by the update
-        for(int u: Nv){
+        for (int u : Nv) {
             int U = V.getInt(u);
             edgeDelta.addTo(U, 1);
         }
@@ -245,7 +268,7 @@ public class MoSSo extends SupernodeHelper {
         if (delta <= 0) acceptanceRatio = 1.;
         else acceptanceRatio = 0.;
 
-        if(randDouble() <= acceptanceRatio){
+        if (randDouble() <= acceptanceRatio) {
             costCounter += delta;
             doNodalUpdate(v, R, S, Nv);
             return true;
@@ -254,20 +277,22 @@ public class MoSSo extends SupernodeHelper {
         }
     }
 
-    private void updateEdge(final int src, final int dst, final boolean add, final boolean check){
+    private void updateEdge(final int src, final int dst, final boolean add, final boolean check) {
         super.processEdge(src, dst, add);
         final int SRC = V.getInt(src), DST = V.getInt(dst);
-        if(add) {
+        if (add) {
             if (P.getNeighbors(SRC).contains(DST)) {
-                if(check) costCounter -= 1;
+                if (check) costCounter -= 1;
                 // remove the information from Cm
-                Cm.deleteEdge(src, dst); Cm.deleteEdge(dst, src);
+                Cm.deleteEdge(src, dst);
+                Cm.deleteEdge(dst, src);
             } else {
-                if(check) costCounter += 1;
+                if (check) costCounter += 1;
                 // add the information to Cp
-                Cp.addEdge(src, dst); Cp.addEdge(dst, src);
+                Cp.addEdge(src, dst);
+                Cp.addEdge(dst, src);
                 int edgeCount = getEdgeCount(SRC, DST);
-                if(check && getPi(SRC, DST) + 1L < ((SRC != DST) ? 2L: 1L) * edgeCount){
+                if (check && getPi(SRC, DST) + 1L < ((SRC != DST) ? 2L : 1L) * edgeCount) {
                     // add new superedge (from SRC to DST) to P
                     costCounter -= (edgeCount / ((SRC == DST) ? 2 : 1));
                     costCounter += getPi(SRC, DST) + 1L - (edgeCount / ((SRC == DST) ? 2 : 1));
@@ -276,49 +301,51 @@ public class MoSSo extends SupernodeHelper {
             }
         } else {
             if (P.getNeighbors(SRC).contains(DST)) {
-                if(check) costCounter += 1;
+                if (check) costCounter += 1;
                 // add the information to Cm
-                Cm.addEdge(src, dst); Cm.addEdge(dst, src);
+                Cm.addEdge(src, dst);
+                Cm.addEdge(dst, src);
                 int edgeCount = getEdgeCount(SRC, DST);
-                if(check && getPi(SRC, DST) + 1L > ((SRC != DST) ? 2L: 1L) * edgeCount){
+                if (check && getPi(SRC, DST) + 1L > ((SRC != DST) ? 2L : 1L) * edgeCount) {
                     // remove superedge (from SRC to DST) from P
                     costCounter += edgeCount / ((SRC == DST) ? 2 : 1);
                     costCounter -= getPi(SRC, DST) + 1L - (edgeCount / ((SRC == DST) ? 2 : 1));
                     updateSuperedge(SRC, DST, false);
                 }
             } else {
-                if(check) costCounter -= 1;
+                if (check) costCounter -= 1;
                 // remove the information from Cp
-                Cp.deleteEdge(src, dst); Cp.deleteEdge(dst, src);
+                Cp.deleteEdge(src, dst);
+                Cp.deleteEdge(dst, src);
             }
         }
     }
 
     private void updateHash(final int src, final int dst, final boolean add) {
-        if(add){
-            for (int i = 0; i< n_hash; i++){
+        if (add) {
+            for (int i = 0; i < h; i++) {
                 int sh = hf[i].getInt(src), dh = hf[i].getInt(dst);
                 // update minhash
                 if (minHash[i].getInt(src) > dh) minHash[i].set(src, dh);
                 if (minHash[i].getInt(dst) > sh) minHash[i].set(dst, sh);
             }
-        }else{
-            for(int i = 0; i< n_hash; i++){
+        } else {
+            for (int i = 0; i < h; i++) {
                 long sh = hf[i].getInt(src), dh = hf[i].getInt(dst);
-                if(minHash[i].getInt(src) == dh){
+                if (minHash[i].getInt(src) == dh) {
                     // update minhash using neighbors of src
                     minHash[i].set(src, INF);
-                    for(int nbd: getNeighbors(src)){
+                    for (int nbd : getNeighbors(src)) {
                         int nh = hf[i].getInt(nbd);
-                        if(minHash[i].getInt(src) > nh) minHash[i].set(src, nh);
+                        if (minHash[i].getInt(src) > nh) minHash[i].set(src, nh);
                     }
                 }
-                if(minHash[i].getInt(dst) == sh){
+                if (minHash[i].getInt(dst) == sh) {
                     // update minhash using neighbors of dst
                     minHash[i].set(dst, INF);
-                    for(int nbd: getNeighbors(dst)){
+                    for (int nbd : getNeighbors(dst)) {
                         int nh = hf[i].getInt(nbd);
-                        if(minHash[i].getInt(dst) > nh) minHash[i].set(dst, nh);
+                        if (minHash[i].getInt(dst) > nh) minHash[i].set(dst, nh);
                     }
                 }
             }
@@ -326,61 +353,143 @@ public class MoSSo extends SupernodeHelper {
     }
 
 
-    private void _processEdge(final int dst, IntArrayList srcnbd, final int which) {
-        Long2ObjectOpenHashMap<IntArrayList> srcGrp = new Long2ObjectOpenHashMap<>();
-        if(getDegree(dst) > 0) srcnbd.set(0, dst);
-        // coarse clustering using minhash
-        for (int v : srcnbd) {
-            long target = minHash[which].getInt(v);
-            if (!srcGrp.containsKey(target)) srcGrp.put(target, new IntArrayList());
-            srcGrp.get(target).add(v);
+    private long evaluateDelta(final int v, int S) {
+        final int R = V.getInt(v);
+
+        IntArrayList Nv = getNeighbors(v);
+        Int2IntOpenHashMap edgeDelta = new Int2IntOpenHashMap();
+
+        for (int u : Nv) {
+            edgeDelta.addTo(V.getInt(u), 1);
         }
+
+        // Returns the exact cost delta of moving 'v' to supernode 'S'
+        return getDelta(R, S, Nv, edgeDelta);
+    }
+
+
+    private void _processEdge(final int dst, IntArrayList srcnbd) {
+        if (getDegree(dst) > 0) srcnbd.set(0, dst);
+
         for (int i = 0; i < sampleNumber; i++) {
             int nbd = srcnbd.getInt(i);
+
             if (randInt(1, getDegree(nbd)) <= 1) {
-                long mh = minHash[which].getInt(nbd);
-                int sz = srcGrp.get(mh).size();
-                // choose random node in the cluster containing nbd
-                int target = srcGrp.get(mh).getInt(randInt(0, sz - 1));
+
                 if (randInt(1, 10) > escape || iteration < 1000) {
-                    tryNodalUpdate(nbd, V.getInt(target));
+
+                    // =========================================================
+                    // STRATEGY 2: Similarity Measure (MinHash Priority Queue)
+                    // =========================================================
+                    PriorityQueue<int[]> pq = new PriorityQueue<>(Comparator.comparingInt(a -> a[0]));
+
+                    for (int v : srcnbd) {
+                        if (v == nbd) continue;
+
+                        // STRATEGY 3 (Blacklist Check): Skip if permanently excluded
+                        if (excludeMap.containsKey(nbd) && excludeMap.get(nbd).contains(v)) {
+                            continue;
+                        }
+
+                        int hits = 0;
+                        for (int k = 0; k < h; k++) {
+                            if (minHash[k].getInt(nbd) == minHash[k].getInt(v)) hits++;
+                        }
+
+                        if (pq.size() < b) {
+                            pq.offer(new int[]{hits, v});
+                        } else if (hits > pq.peek()[0]) {
+                            pq.poll();
+                            pq.offer(new int[]{hits, v});
+                        }
+                    }
+
+                    // Dump queue to array
+                    int[][] bestCandidates = new int[pq.size()][2];
+                    int index = 0;
+                    while (!pq.isEmpty()) bestCandidates[index++] = pq.poll();
+
+                    long bestDelta = 1; // Start with a rejection value
+                    int bestTarget = -1;
+
+                    // =========================================================
+                    // STRATEGY 1: Node Selection (Evaluate ALL top b candidates)
+                    // =========================================================
+                    for (int j = bestCandidates.length - 1; j >= 0; j--) {
+                        int target = bestCandidates[j][1];
+                        int targetSupernode = V.getInt(target);
+
+                        if (V.getInt(nbd) == targetSupernode) continue; // Skip if already in same supernode
+
+                        // Evaluate exact savings WITHOUT moving the node
+                        long delta = evaluateDelta(nbd, targetSupernode);
+
+                        // =========================================================
+                        // STRATEGY 3 (Negative Threshold): Populate Blacklist
+                        // =========================================================
+                        if (delta >= thr) {
+                            excludeMap.computeIfAbsent(nbd, k -> new IntOpenHashSet()).add(target);
+                            excludeMap.computeIfAbsent(target, k -> new IntOpenHashSet()).add(nbd);
+                        }
+
+                        // Strategy 1: Find the absolute maximum saving (lowest delta) among the b candidates
+                        if (delta < bestDelta) {
+                            bestDelta = delta;
+                            bestTarget = target;
+                        }
+                    }
+
+                    // =========================================================
+                    // STRATEGY 3 (Positive Threshold): Accept best move
+                    // =========================================================
+                    // Only apply the move if the BEST candidate actually reduces/maintains the cost (delta <= 0)
+                    if (bestDelta <= 0 && bestTarget != -1) {
+                        int R = V.getInt(nbd);
+                        int S = V.getInt(bestTarget);
+                        IntArrayList Nv = getNeighbors(nbd);
+
+                        costCounter += bestDelta;
+                        doNodalUpdate(nbd, R, S, Nv); // Actually apply the move
+                    }
+
                 } else {
-                    // only if the supernode containing nbd is not singleton
-                    if(getSize(V.getInt(nbd)) > 1) tryNodalUpdate(nbd, newSupernode());
+                    // Escape: Move to a new singleton supernode
+                    if (getSize(V.getInt(nbd)) > 1) tryNodalUpdate(nbd, newSupernode());
                 }
             }
         }
     }
 
-    private void deactivateNode(final int v){
+    private void deactivateNode(final int v) {
         int R = V.getInt(v);
-        for(int U: P.getNeighbors(R)){
-            for(int _u: getMembers(U)){
-                if(v == _u) continue;
-                Cm.deleteEdge(v, _u); Cm.deleteEdge(_u, v);
+        for (int U : P.getNeighbors(R)) {
+            for (int _u : getMembers(U)) {
+                if (v == _u) continue;
+                Cm.deleteEdge(v, _u);
+                Cm.deleteEdge(_u, v);
             }
         }
         moveNode(v, R, -1);
 
         // update compressedData
         Int2IntOpenHashMap extendedNbrs_R = new Int2IntOpenHashMap(getRawNeighbors(R));
-        for(int U: P.getNeighbors(R)) {
+        for (int U : P.getNeighbors(R)) {
             extendedNbrs_R.addTo(U, 0);
         }
 
         long edgeCount, pi;
         // update summary
-        for(Int2IntMap.Entry U: extendedNbrs_R.int2IntEntrySet()) {
+        for (Int2IntMap.Entry U : extendedNbrs_R.int2IntEntrySet()) {
             edgeCount = U.getIntValue() / (U.getIntKey() == R ? 2 : 1);
             pi = getPi(R, U.getIntKey());
             costCounter -= min((pi + getSize(U.getIntKey())) - edgeCount + 1, edgeCount);
             costCounter += min(pi - edgeCount + 1, edgeCount);
-            if(P.getEdgeCount(R, U.getIntKey()) > 0){
-                if(edgeCount < pi - edgeCount + 1L){
+            if (P.getEdgeCount(R, U.getIntKey()) > 0) {
+                if (edgeCount < pi - edgeCount + 1L) {
                     updateSuperedge(R, U.getIntKey(), false);
                 }
             } else {
-                if(edgeCount > pi - edgeCount + 1L){
+                if (edgeCount > pi - edgeCount + 1L) {
                     updateSuperedge(R, U.getIntKey(), true);
                 }
             }
@@ -390,35 +499,39 @@ public class MoSSo extends SupernodeHelper {
     @Override
     public void processEdge(final int src, final int dst, final boolean add) {
         iteration += 1;
-        if(add){
+        if (add) {
             ecnt += 1;
-        }else{
+        } else {
             ecnt -= 1;
         }
         // add node src in graph and create singleton supernode
-        if(V.getInt(src) < 0){
+        if (V.getInt(src) < 0) {
             int to = newSupernode();
-            moveNode(src,-1, to);
+            moveNode(src, -1, to);
         }
         // add node dst in graph and create singleton supernode
-        if(V.getInt(dst) < 0){
+        if (V.getInt(dst) < 0) {
             int to = newSupernode();
-            moveNode(dst,-1, to);
+            moveNode(dst, -1, to);
         }
         updateEdge(src, dst, add, true);
         updateHash(src, dst, add);
-        int which = randInt(0, n_hash-1);
-        if(getDegree(src) > 0){
+
+        // REMOVED: int which = randInt(0, n_hash-1);
+
+        if (getDegree(src) > 0) {
             IntArrayList srcnbd = getRandomNeighbors(src, sampleNumber);
-            _processEdge(dst, srcnbd, which);
-        }else{
+            // REMOVED 'which' parameter
+            _processEdge(dst, srcnbd);
+        } else {
             // since node src is an isolated node
             deactivateNode(src);
         }
-        if(getDegree(dst) > 0){
+        if (getDegree(dst) > 0) {
             IntArrayList dstnbd = getRandomNeighbors(dst, sampleNumber);
-            _processEdge(src, dstnbd, which);
-        }else{
+            // REMOVED 'which' parameter
+            _processEdge(src, dstnbd);
+        } else {
             // since node dst is an isolated node
             deactivateNode(dst);
         }
@@ -426,12 +539,12 @@ public class MoSSo extends SupernodeHelper {
         if (iteration % interval == 0) {
             System.out.print(iteration);
             System.out.print(" : Elapsed time : " + (System.currentTimeMillis() - start) / 1000.);
-            System.out.println(" : ratio : " + (costCounter / ((double)ecnt)));
+            System.out.println(" : ratio : " + (costCounter / ((double) ecnt)));
         }
     }
 
     @Override
-    public void processBatch(){
-        System.out.println("Expected Compression Ratio: " + (costCounter / (double)ecnt));
+    public void processBatch() {
+        System.out.println("Expected Compression Ratio: " + (costCounter / (double) ecnt));
     }
 }
