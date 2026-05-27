@@ -38,6 +38,18 @@ class Bayesian(Experiment):
 
             self.logger.print(f"[bold cyan]Starting Bayesian Optimization: {algo_name}[/]")
 
+            default_params = {}
+            base_params = self._resolve_algo_params(algo_config)
+
+            for p_name, conf in PARAM_CONFIG.items():
+                if p_name in base_params and "bounds" in conf:
+                    # Optuna needs the actual types (int/float), not strings
+                    val_type = conf["type"]
+                    default_params[p_name] = val_type(base_params[p_name])
+
+            # skip_if_exists=True prevents re-evaluating the default if you resume a study
+            study.enqueue_trial(default_params, skip_if_exists=True)
+
             def objective(trial):
                 params = self._resolve_algo_params(algo_config)
 
