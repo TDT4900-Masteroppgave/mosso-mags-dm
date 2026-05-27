@@ -20,7 +20,6 @@ PARAM_CONFIG = {
             "type": int},
     "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 10), "step": 10, "type": int},
     "p": {"description": "number of threads", "default": 30, "type": int},
-    "thr_2": {"description": "end threshold", "default": 0.0, "bounds": (1.0, 10.0), "step": 1.0, "type": float},
 }
 
 ALGORITHMS = {
@@ -122,38 +121,6 @@ ALGORITHMS = {
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
     },
-    "mosso_best_compression": {
-        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
-        "branch": "master",
-        "params": {"e": 2, "c": 236},
-        "type": "mosso",
-        "template": ["e", "c", "interval"],
-        "binary_file": "kdd20-mosso.jar"
-    },
-    "mosso_fastest_time": {
-        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
-        "branch": "master",
-        "params": {"e": 2, "c": 30},
-        "type": "mosso",
-        "template": ["e", "c", "interval"],
-        "binary_file": "kdd20-mosso.jar"
-    },
-    "mosso_balanced": {
-        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
-        "branch": "master",
-        "params": {"e": 1, "c": 50},
-        "type": "mosso",
-        "template": ["e", "c", "interval"],
-        "binary_file": "kdd20-mosso.jar"
-    },
-    "full_solution_sm": {
-        "repo": BASE_REPO_URL,
-        "branch": "mags_strat/similarity_measure",
-        "type": "mosso",
-        "params": {"e": 2, "c": 50, "h": 5},
-        "template": ["e", "c", "interval", "h"],
-        "binary_file": "mosso.jar",
-    },
     "full_solution": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
@@ -162,27 +129,51 @@ ALGORITHMS = {
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
+    "mosso_best_compression": {
+        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
+        "branch": "master",
+        "params": {"e": 2, "c": 2336},
+        "type": "mosso",
+        "template": ["e", "c", "interval"],
+        "binary_file": "kdd20-mosso.jar"
+    },
     "full_solution_best_compression": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "params": {"e": 1, "c": 200, "h": 1, "thr": 0.0},
+        "params": {"e": 2, "c": 230, "h": 5, "thr": 0.0},
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
+    },
+    "mosso_fastest_time": {
+        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
+        "branch": "master",
+        "params": {"e": 2, "c": 10},
+        "type": "mosso",
+        "template": ["e", "c", "interval"],
+        "binary_file": "kdd20-mosso.jar"
     },
     "full_solution_fastest_time": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "params": {"e": 4, "c": 10, "h": 1, "thr": 0.5},
+        "params": {"e": 1, "c": 10, "h": 2, "thr": 0.6},
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
+    },
+    "mosso_balanced": {
+        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
+        "branch": "master",
+        "params": {"e": 2, "c": 60},
+        "type": "mosso",
+        "template": ["e", "c", "interval"],
+        "binary_file": "kdd20-mosso.jar"
     },
     "full_solution_balanced": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "params": {"e": 2, "c": 50, "h": 5, "thr": 0.3},
+        "params": {"e": 3, "c": 32, "h": 5, "thr": 0.3},
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
@@ -190,7 +181,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "params": {"e": 3, "c": 80, "h": 3, "thr": 0.1},
+        "params": {"e": 3, "c": 94, "h": 4, "thr": 0.1},
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
@@ -198,15 +189,16 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "params": {"e": 3, "c": 100, "h": 5, "thr": 0.2},
+        "params": {"e": 3, "c": 130, "h": 4, "thr": 0.1},
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
-    "full_solution_2": {
+    "full_solution_sm": {
         "repo": BASE_REPO_URL,
-        "branch": "full_solution_2",
+        "branch": "mags_strat/similarity_measure",
         "type": "mosso",
-        "template": ["e", "c", "interval", "h", "b", "thr_2"],
+        "params": {"e": 3, "c": 32, "h": 5, },
+        "template": ["e", "c", "interval", "h"],
         "binary_file": "mosso.jar",
     },
 }
