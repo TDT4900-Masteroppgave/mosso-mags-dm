@@ -20,6 +20,7 @@ PARAM_CONFIG = {
             "type": int},
     "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 10), "step": 10, "type": int},
     "p": {"description": "number of threads", "default": 30, "type": int},
+    "thr_2": {"description": "end threshold", "default": 0.0, "bounds": (1.0, 10.0), "step": 1.0, "type": float},
 }
 
 ALGORITHMS = {
@@ -199,6 +200,13 @@ ALGORITHMS = {
         "type": "mosso",
         "params": {"e": 3, "c": 100, "h": 5, "thr": 0.2},
         "template": ["e", "c", "interval", "h", "thr"],
+        "binary_file": "mosso.jar",
+    },
+    "full_solution_2": {
+        "repo": BASE_REPO_URL,
+        "branch": "full_solution_2",
+        "type": "mosso",
+        "template": ["e", "c", "interval", "h", "b", "thr_2"],
         "binary_file": "mosso.jar",
     },
 }
