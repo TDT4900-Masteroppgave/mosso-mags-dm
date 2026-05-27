@@ -114,6 +114,7 @@ class LineChartScalabilityPlotter(Plotter):
             x_ticks = [int(v) for v in selected_slices]
             y_ticks = choose_power_ticks(ds_data["accumulated_time_sec"])
 
+            import seaborn as sns
             fig, ax = plt.subplots(figsize=(6, 3.5))
             plotted_algos = 0
             linear_baselines = []
@@ -135,7 +136,7 @@ class LineChartScalabilityPlotter(Plotter):
                     curve["accumulated_time_sec"],
                     color=color,
                     marker=marker,
-                    markersize=6,
+                    markersize=5.5,
                     markerfacecolor="white",
                     markeredgecolor=color,
                     markeredgewidth=1.5,
@@ -144,6 +145,7 @@ class LineChartScalabilityPlotter(Plotter):
                     label=label,
                     zorder=3,
                 )
+
                 plotted_algos += 1
                 linear_baselines.append((algo, color, curve))
 
@@ -170,16 +172,18 @@ class LineChartScalabilityPlotter(Plotter):
 
             set_shared_log_axes(ax, x_ticks, y_ticks)
 
-            ax.set_xlabel("Number of Changes", fontsize=14, style="italic", labelpad=8)
-            ax.set_ylabel("Accumulated Time (sec)", fontsize=14, style="italic", labelpad=10)
+            ax.set_xlabel("Number of Changes", fontsize=12, style="italic", labelpad=8)
+            ax.set_ylabel("Accumulated Time (sec)", fontsize=12, style="italic", labelpad=10)
 
-            ax.grid(True, which="major", linestyle="--", linewidth=0.7, alpha=0.6)
-            ax.grid(True, which="minor", axis="both", linestyle=":", linewidth=0.5, alpha=0.4)
+            ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
+            ax.grid(True, which="minor", axis="both", linestyle=":", linewidth=0.4, alpha=0.3)
+
+            sns.despine(ax=ax, top=True, right=True)
 
             ax.legend(
                 title="",
                 loc="upper center",
-                bbox_to_anchor=(0.5, -0.18),
+                bbox_to_anchor=(0.5, -0.24),
                 ncol=min(3, plotted_algos + 1),
                 handlelength=1.8,
                 handletextpad=0.5,
@@ -191,9 +195,11 @@ class LineChartScalabilityPlotter(Plotter):
             fig.subplots_adjust(left=0.20, right=0.98, bottom=0.32, top=0.96)
 
             png_path = out_dir / f"scalability_line_{ds}.png"
+            pdf_path = out_dir / f"scalability_line_{ds}.pdf"
             fig.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
+            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
             plt.close(fig)
 
-            generated_files.append(png_path)
+            generated_files.extend([png_path, pdf_path])
 
         return generated_files

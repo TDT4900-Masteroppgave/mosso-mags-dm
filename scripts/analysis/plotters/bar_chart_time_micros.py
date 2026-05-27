@@ -98,6 +98,7 @@ class BarChartPlotter(Plotter):
     description = "Bar chart comparing Execution Time (Batch vs Streaming) with stats table"
 
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
+        self.set_chart_theme()
         suffix = "_".join(algos)
 
         # 1. Generate the statistics base DataFrame
@@ -182,12 +183,12 @@ class BarChartPlotter(Plotter):
             palette=palette,
             estimator=np.median,
             errorbar=None,
-            edgecolor="black",
-            linewidth=1.2,
+            edgecolor="white",
+            linewidth=0.8,
             ax=ax
         )
 
-        plt.xlabel("")
+        ax.set_xlabel("")
         ax.set_yscale("log", base=10)
         ax.set_ylim(bottom=1)
         ax.yaxis.set_minor_locator(ticker.NullLocator())
@@ -195,20 +196,25 @@ class BarChartPlotter(Plotter):
         # Execute repaired dynamic annotation engine
         _annotate_pairwise_ratios(ax, data, algos, ordered_datasets)
 
-        plt.ylabel("Execution Time\n(microseconds)", fontsize=14, style='italic')
+        ax.set_ylabel("Execution Time\n(microseconds)", fontsize=12, style='italic')
 
-        plt.legend(
+        sns.despine(ax=ax, top=True, right=True)
+
+        ax.legend(
             title="",
             bbox_to_anchor=(0.5, 1.15),
             loc='upper center',
             ncol=len(algos),
-            frameon=False
+            frameon=False,
+            fontsize=9
         )
 
         plt.tight_layout()
 
         png_path = out_dir / f"execution_time_{suffix}.png"
+        pdf_path = out_dir / f"execution_time_{suffix}.pdf"
         plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
+        plt.savefig(pdf_path, format="pdf", bbox_inches="tight")
         plt.close()
 
-        return [png_path, txt_path]
+        return [png_path, pdf_path, txt_path]

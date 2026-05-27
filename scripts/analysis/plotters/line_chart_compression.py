@@ -21,6 +21,7 @@ class LineChartCompressionPlotter(Plotter):
         for ds in datasets:
             ds_data = data[data["dataset"] == ds]
 
+            import seaborn as sns
             fig, ax = plt.subplots(figsize=(6, 3.5))
 
             for algo in algos:
@@ -47,6 +48,7 @@ class LineChartCompressionPlotter(Plotter):
                         linewidth=1.5,
                         marker=""
                     )
+
                 else:
                     ax.plot(
                         algo_data["change_ratio"],
@@ -55,14 +57,14 @@ class LineChartCompressionPlotter(Plotter):
                         color=color,
                         linestyle="",
                         marker=marker,
-                        markersize=8,
+                        markersize=6,
                         markeredgecolor=color,
                         markerfacecolor="none",
                         mew=1.2
                     )
 
-            plt.ylabel("Compression Ratio", fontsize=14)
-            plt.xlabel("Ratio of Processed Changes", fontsize=14)
+            ax.set_ylabel("Compression Ratio", fontsize=12, style='italic')
+            ax.set_xlabel("Ratio of Processed Changes", fontsize=12, style='italic')
 
             def format_checkpoint(x, _):
                 return f"{x:.1f}"
@@ -71,20 +73,25 @@ class LineChartCompressionPlotter(Plotter):
             ax.set_xticks(paper_ticks)
             ax.set_xlim(-0.05, 1.05)
 
-            plt.legend(
+            sns.despine(ax=ax, top=True, right=True)
+
+            ax.legend(
                 title="",
                 bbox_to_anchor=(0.5, 1.15),
                 loc='upper center',
                 ncol=len(algos),
-                frameon=False
+                frameon=False,
+                fontsize=9
             )
 
             plt.tight_layout()
 
             png_path = out_dir / f"compression_line_{ds}.png"
+            pdf_path = out_dir / f"compression_line_{ds}.pdf"
             plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
+            plt.savefig(pdf_path, format="pdf", bbox_inches="tight")
             plt.close()
 
-            generated_files.append(png_path)
+            generated_files.extend([png_path, pdf_path])
 
         return generated_files

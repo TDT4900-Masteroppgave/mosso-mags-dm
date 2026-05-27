@@ -72,6 +72,7 @@ class OptunaHistoryPlotter(Plotter):
                     best_times = time_series.cummin()
                     best_ratios = ratio_series.cummin()
 
+                    import seaborn as sns
                     fig, ax1 = plt.subplots(figsize=(7, 4))
 
                     t_min, t_max = best_times.min(), best_times.max()
@@ -85,26 +86,29 @@ class OptunaHistoryPlotter(Plotter):
                     ax1.set_ylim(max(0, t_min - t_margin), t_max + t_margin)
 
                     # 1. Plot Execution Time (Left Y-Axis)
-                    ax1.set_xlabel("trial number", fontsize=14, style='italic')
-                    ax1.set_ylabel(time_label, fontsize=14, style='italic', color=color_time)
+                    ax1.set_xlabel("trial number", fontsize=12, style='italic')
+                    ax1.set_ylabel(time_label, fontsize=12, style='italic', color=color_time)
 
                     ax1.scatter(trial_numbers, times, color=color_time, alpha=0.25, s=20, marker=marker_time, label="_nolegend_", zorder=2)
                     ax1.plot(trial_numbers, best_times, color=color_time, linewidth=2, linestyle="-", label="Best Time", zorder=3)
 
                     ax1.tick_params(axis='y', labelcolor=color_time)
-                    ax1.grid(True, which="major", linestyle="--", linewidth=0.7, alpha=0.6)
+                    ax1.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
 
                     # 2. Plot Compression Ratio (Right Y-Axis)
                     ax2 = ax1.twinx()
 
                     ax2.set_ylim(max(0, r_min - r_margin), r_max + r_margin)
 
-                    ax2.set_ylabel("relative size", fontsize=14, style='italic', color=color_ratio)
+                    ax2.set_ylabel("relative size", fontsize=12, style='italic', color=color_ratio)
 
                     ax2.scatter(trial_numbers, ratios, color=color_ratio, alpha=0.25, s=20, marker=marker_ratio, label="_nolegend_", zorder=2)
                     ax2.plot(trial_numbers, best_ratios, color=color_ratio, linewidth=2, linestyle="--", label="Best Ratio", zorder=3)
 
                     ax2.tick_params(axis='y', labelcolor=color_ratio)
+
+                    sns.despine(ax=ax1, top=True, right=True)
+                    sns.despine(ax=ax2, top=True, right=False)
 
                     eval_window = max(5, int(len(trial_numbers) * 0.15))
                     time_converged = best_times.iloc[-1] == best_times.iloc[-eval_window]
@@ -115,15 +119,17 @@ class OptunaHistoryPlotter(Plotter):
 
                     lines1, labels1 = ax1.get_legend_handles_labels()
                     lines2, labels2 = ax2.get_legend_handles_labels()
-                    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, frameon=False)
+                    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, frameon=False, fontsize=9)
 
                     fig.tight_layout()
 
                     out_path = out_dir / f"optuna_history_{ds}_{algo_name}.png"
+                    pdf_path = out_dir / f"optuna_history_{ds}_{algo_name}.pdf"
                     fig.savefig(out_path, format="png", dpi=300, bbox_inches="tight")
+                    fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
                     plt.close(fig)
 
-                    generated_files.append(out_path)
+                    generated_files.extend([out_path, pdf_path])
 
                 except Exception as e:
                     console.print(f"[dim]Could not generate history for {algo_name}: {e}[/dim]")

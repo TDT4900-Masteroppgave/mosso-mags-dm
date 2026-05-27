@@ -57,8 +57,8 @@ class ParamImportancePlotter(Plotter):
                         evaluator=PedAnovaImportanceEvaluator()
                     )
                     if importances_obj_0:
-                        out_path = self._plot_importances(importances_obj_0, algo_name, "Objective 0", out_dir)
-                        if out_path: generated_files.append(out_path)
+                        out_paths = self._plot_importances(importances_obj_0, algo_name, "Objective 0", out_dir)
+                        if out_paths: generated_files.extend(out_paths)
                 except Exception as e:
                     print(f"Could not calculate Objective 0 importance for {algo_name}: {e}")
 
@@ -70,8 +70,8 @@ class ParamImportancePlotter(Plotter):
                         evaluator=PedAnovaImportanceEvaluator()
                     )
                     if importances_obj_1:
-                        out_path = self._plot_importances(importances_obj_1, algo_name, "Objective 1", out_dir)
-                        if out_path: generated_files.append(out_path)
+                        out_paths = self._plot_importances(importances_obj_1, algo_name, "Objective 1", out_dir)
+                        if out_paths: generated_files.extend(out_paths)
                 except Exception as e:
                     print(f"Could not calculate Objective 1 importance for {algo_name}: {e}")
 
@@ -81,10 +81,11 @@ class ParamImportancePlotter(Plotter):
 
         return generated_files
 
-    def _plot_importances(self, importances: dict, algo: str, metric: str, out_dir: Path) -> Path | None:
+    def _plot_importances(self, importances: dict, algo: str, metric: str, out_dir: Path) -> list[Path]:
         if not importances:
-            return None
+            return []
 
+        import seaborn as sns
         fig, ax = plt.subplots(figsize=(7, 4.5))
 
         # Sort importances ascending for a horizontal bar chart
@@ -98,22 +99,29 @@ class ParamImportancePlotter(Plotter):
         style = self.get_algo_style(algo)
         color = style["color"]
 
-        ax.barh(keys, vals, color=color, alpha=0.85, edgecolor='black', linewidth=1.2)
+        ax.barh(keys, vals, color=color, alpha=0.85, edgecolor='white', linewidth=0.8)
 
-        ax.set_xlabel("Importance", fontsize=14, style='italic')
-        ax.set_ylabel("Hyperparameter", fontsize=14, style='italic')
+        for container in ax.containers:
+            ax.bar_label(container, fmt='%.3f', padding=5, fontsize=8, color='#4A5568')
+
+        ax.set_xlabel("Importance", fontsize=12, style='italic')
+        ax.set_ylabel("Hyperparameter", fontsize=12, style='italic')
         ax.set_title(f"Parameter Importance for {algo}\n(Objective: {metric})", fontsize=12, pad=15)
 
+        sns.despine(ax=ax, top=True, right=True)
+
         # Grid lines behind bars for readability
-        ax.grid(True, axis='x', linestyle='--', alpha=0.6)
+        ax.grid(True, axis='x', linestyle='--', linewidth=0.5, alpha=0.5)
         ax.set_axisbelow(True)
-        ax.set_xlim(0, max(max(vals) * 1.1, 0.05)) # Give a 10% breathing room on the right
+        ax.set_xlim(0, max(max(vals) * 1.15, 0.05)) # Give a 15% breathing room on the right
 
         fig.tight_layout()
 
         metric_slug = metric.lower().replace(' ', '_')
         out_path = out_dir / f"param_importance_{algo}_{metric_slug}.png"
+        pdf_path = out_dir / f"param_importance_{algo}_{metric_slug}.pdf"
         fig.savefig(out_path, format="png", dpi=300, bbox_inches="tight")
+        fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
         plt.close(fig)
 
-        return out_path
+        return [out_path, pdf_path]

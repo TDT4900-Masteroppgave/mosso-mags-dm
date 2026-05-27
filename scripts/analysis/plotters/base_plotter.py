@@ -1,8 +1,9 @@
+import json
 import pandas as pd
 import seaborn as sns
 from pathlib import Path
 from abc import ABC, abstractmethod
-from scripts.config import PARAM_CONFIG
+from scripts.config import PARAM_CONFIG, DATASETS_DIR
 
 PLOTTERS: dict[str, type['Plotter']] = {}
 
@@ -10,6 +11,8 @@ class Plotter(ABC):
     plotter_id: str = ""
     description: str = ""
     dataset_order: list[str] = ["PR", "CA", "BK", "EN", "EA", "FB", "SL", "EU", "HW", "UK", "DB", "YT", "SK", "LJ"]
+
+    _metadata_cache = None
 
     ALGO_STYLES = {
         "local": {"color": "#000000", "marker": "s"},          # Black
@@ -53,24 +56,42 @@ class Plotter(ABC):
         ordered_display.extend(remaining)
         return ordered_display
 
+    def get_dataset_metadata(self) -> dict:
+        """Retrieves and caches dataset metadata from preprocessing_log.json."""
+        if self._metadata_cache is not None:
+            return self._metadata_cache
+
+        self._metadata_cache = {}
+        log_file = DATASETS_DIR / "preprocessing_log.json"
+        if log_file.exists():
+            with open(log_file, "r", encoding="utf-8") as f:
+                prep_log = json.load(f)
+                for ds_name, info in prep_log.items():
+                    self._metadata_cache[ds_name] = info.get("metadata", {})
+        return self._metadata_cache
+
     def set_chart_theme(self):
         sns.set_theme(style="ticks", rc={
-            "axes.edgecolor": "black",
-            "axes.linewidth": 1.2,
+            "axes.edgecolor": "#2D3748",  # Soft dark grey
+            "axes.linewidth": 1.0,
             "axes.facecolor": "white",
             "figure.facecolor": "white",
-            "grid.color": "white",
+            "grid.color": "#E2E8F0",      # Soft light grey gridlines
+            "grid.linestyle": "--",
+            "grid.linewidth": 0.5,
             "font.family": "serif",
-            "font.serif": ["Times New Roman", "Computer Modern Roman", "serif"],
-            "axes.labelsize": 14,
-            "xtick.labelsize": 12,
-            "ytick.labelsize": 12,
-            "xtick.direction": "in",
-            "ytick.direction": "in",
+            "font.serif": ["Times New Roman", "Computer Modern Roman", "DejaVu Serif", "serif"],
+            "axes.labelsize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "xtick.direction": "out",     # Direct ticks outward
+            "ytick.direction": "out",
             "xtick.top": False,
-            "ytick.right": True,
+            "ytick.right": False,         # Left/bottom only
             "legend.frameon": False,
-            "legend.fontsize": 12
+            "legend.fontsize": 9,
+            "pdf.fonttype": 42,           # Embed fonts as vector Type 42 in PDFs
+            "ps.fonttype": 42
         })
         sns.set_palette(sns.color_palette(self.THEME_COLORS))
 
@@ -95,6 +116,10 @@ class Plotter(ABC):
         group_cols = ["dataset", "algorithm"]
         optional_group_cols = ["change_ratio", "param", "trial", "run", "edges_processed", "changes_evaluated",
                                "edges_evaluated", "power_of_2", "is_streaming", "param_name"]
+        for k in PARAM_CONFIG.keys():
+            if k not in optional_group_cols:
+                optional_group_cols.append(k)
+
         for col in optional_group_cols:
             if col in sub.columns:
                 group_cols.append(col)

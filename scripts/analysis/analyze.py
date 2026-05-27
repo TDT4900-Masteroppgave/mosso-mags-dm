@@ -19,12 +19,12 @@ from scripts.config import EXPERIMENT_DIR
 console = Console(highlight=False)
 
 EXPERIMENT_PLOTS = {
-    "benchmark": ["bar_chart_time", "bar_chart_time_log", "bar_chart_compression"],
+    "benchmark": ["bar_chart_time_compression", "bar_chart_time_log"],
     "processing_speed": ["bar_chart_time_micros"],
     "compression_checkpoints": ["line_chart_compression"],
     "sweep": ["line_chart_sweep"],
     "scalability": ["line_chart_scalability"],
-    "bayesian": ["pareto_front", "pareto_compare_baseline", "trial_history", "param_importance"],
+    "bayesian": ["pareto_front", "pareto_tradeoff", "trial_history", "param_importance"],
 }
 
 _STYLE = questionary.Style([
@@ -140,7 +140,7 @@ def _pick_datasets(available: list[str]) -> list[str]:
         console.print("[yellow]Select at least one dataset.[/yellow]")
 
 
-def _pick_plot(session_type: str) -> type['Plotter'] | None:
+def _pick_plot(session_type: str) -> list[type['Plotter']] | None:
     allowed_plot_ids = EXPERIMENT_PLOTS.get(session_type, [])
 
     if not allowed_plot_ids:
@@ -151,22 +151,28 @@ def _pick_plot(session_type: str) -> type['Plotter'] | None:
     for pid in allowed_plot_ids:
         plotter_cls = get_plotter(pid)
         if plotter_cls:
-            choices.append(Choice(title=f"{plotter_cls.description}", value=plotter_cls))
+            # We set checked=True by default so it selects all available plots
+            choices.append(Choice(title=f"{plotter_cls.description}", value=plotter_cls, checked=True))
 
     if not choices:
         console.print(f"[red]No registered plotters found for {session_type}.[/red]")
         return None
 
     if len(choices) == 1:
-        return choices[0].value
+        return [choices[0].value]
 
-    res = questionary.select(
-        "Select plot type:",
-        choices=choices,
-        style=_STYLE
-    ).ask()
+    while True:
+        res = questionary.checkbox(
+            "Select plot types (space to toggle, enter to confirm):",
+            choices=choices,
+            style=_STYLE
+        ).ask()
 
-    return res
+        if res is None:
+            return None
+        if res:
+            return res
+        console.print("[yellow]Select at least one plot type.[/yellow]")
 
 
 def _confirm(msg: str, default: bool = False) -> bool:
@@ -243,7 +249,6 @@ def main() -> None:
         if "dataset" in df.columns else []
     )
 
-
     plot_df = df.copy()
     algos = _pick_algos(available_algos)
     if not algos:
@@ -257,17 +262,18 @@ def main() -> None:
         if not datasets:
             return
 
-    plotter_cls = _pick_plot(session.type)
-    if not plotter_cls:
-        console.print("[yellow]No plot to generate selected.[/yellow]")
+    plotter_classes = _pick_plot(session.type)
+    if not plotter_classes:
+        console.print("[yellow]No plots to generate selected.[/yellow]")
         return
 
     # Print a beautiful summary panel right before generating
+    plot_descriptions = ", ".join(p.description for p in plotter_classes)
     summary_text = (
         f"[bold]Session:[/bold] {_fmt_ts(session.timestamp)}\n"
         f"[bold]Algorithms:[/bold] {', '.join(algos)}\n"
         f"[bold]Datasets:[/bold] {', '.join(datasets) if datasets else 'All'}\n"
-        f"[bold]Plot Type:[/bold] {plotter_cls.description}"
+        f"[bold]Plot Types:[/bold] {plot_descriptions}"
     )
     console.print(Panel(summary_text, title="Summary", border_style="cyan"))
 
@@ -280,11 +286,19 @@ def main() -> None:
     }
 
     try:
-        out_paths = plotter_cls().process(plot_df, algos, out_dir, options)
-        for path in out_paths:
-            console.print(f"[green]✓[/green] Saved: [bold]{path}[/bold]")
+        all_out_paths = []
+        for plotter_cls in plotter_classes:
+            out_paths = plotter_cls().process(plot_df, algos, out_dir, options)
+            if out_paths:
+                all_out_paths.extend(out_paths)
+
+        if all_out_paths:
+            console.print(f"\n[green]✓[/green] All artifacts saved to directory:\n[bold]{out_dir}[/bold]")
+        else:
+            console.print("\n[yellow]No artifacts were generated.[/yellow]")
     except Exception as e:
-        console.print(f"[red]✗ Analysis failed:[/red] {e}\n")
+        console.print(f"[red]✗ Analysis failed:[/red] {e}")
+
 
 if __name__ == "__main__":
     main()
