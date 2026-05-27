@@ -15,7 +15,7 @@ PARAM_CONFIG = {
     "h": {"description": "hashes", "default": 4, "bounds": (1, 5), "step": 1, "type": int},
     #"h": {"description": "hashes", "default": 4, "bounds": (1, 50), "step": 10, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
-    "thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 0.5), "step": 0.1, "type": float},
+    "thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "step": 0.1, "type": float},
     "cap": {"description": "cap of coarse cluster buckets", "default": 60, "bounds": (10, 120), "step": 10,
             "type": int},
     "T": {"description": "iterations over partitions", "default": 1, "bounds": (1, 10), "step": 10, "type": int},
