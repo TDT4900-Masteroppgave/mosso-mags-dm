@@ -50,15 +50,21 @@ class OptunaTradeoffPlotter(Plotter):
             if ds_data.empty: continue
 
             # --- 1. Extract MoSSo Baseline Points ---
-            mosso_data = ds_data[ds_data["algorithm"] == "kdd20-mosso"].copy()
+            mosso_names = {"kdd20-mosso", "MoSSo"}
+            mosso_data = ds_data[ds_data["algorithm"].isin(mosso_names)].copy()
+
             if mosso_data.empty:
                 print(f"[Warning] MoSSo not found in dataset '{ds}'. Skipping.")
                 continue
 
             # Identify MoSSo Default (c=120, e=3)
-            default_mask = mosso_data["c"] == 120 if "c" in mosso_data.columns else pd.Series(True, index=mosso_data.index)
-            if "e" in mosso_data.columns:
-                default_mask = default_mask & (mosso_data["e"] == 3)
+            if "c" not in mosso_data.columns or "e" not in mosso_data.columns:
+                print(f"[Warning] MoSSo default columns c/e missing in '{ds}'. Skipping.")
+                continue
+
+            c_vals = pd.to_numeric(mosso_data["c"], errors="coerce")
+            e_vals = pd.to_numeric(mosso_data["e"], errors="coerce")
+            default_mask = (c_vals == 120) & (e_vals == 3)
 
             default_runs = mosso_data[default_mask]
             if default_runs.empty:
@@ -78,25 +84,39 @@ class OptunaTradeoffPlotter(Plotter):
                 "Balanced 50/50": mosso_data.loc[mosso_data["dist_to_ideal"].idxmin()]
             }
 
+            mosso_label = str(mosso_data["algorithm"].iloc[0])
             for profile, pt in mosso_points.items():
-                raw_tradeoff_data.append(self._format_raw_row(ds, "kdd20-mosso", profile, pt, param_cols))
+                raw_tradeoff_data.append(
+                    self._format_raw_row(ds, mosso_label, profile, pt, param_cols)
+                )
 
             # --- Plot Setup ---
             fig, ax = plt.subplots(figsize=(8, 5.5))
             ax.axhline(def_r, color="#94A3B8", linestyle="--", linewidth=1.0, zorder=1)
             ax.axvline(def_t, color="#94A3B8", linestyle="--", linewidth=1.0, zorder=1)
 
+            mosso_pareto = self._pareto_front(mosso_data)
+            if not mosso_pareto.empty:
+                ax.plot(mosso_pareto["time"], mosso_pareto["ratio"], color="gray", linestyle="-",
+                        linewidth=1.8, alpha=0.85, zorder=3)
+
             ax.plot(mosso_data["time"], mosso_data["ratio"], marker=".", color="gray", linestyle="none", alpha=0.15, zorder=2)
             ax.plot(def_t, def_r, marker="*", markersize=14, color="gold", markeredgecolor="black", zorder=10, label="MoSSo Default")
 
             # --- 2. Extract Other Algorithms ---
             for algo in algos:
-                if algo == "kdd20-mosso": continue
+                if algo in mosso_names: continue
 
                 algo_data = ds_data[ds_data["algorithm"] == algo].copy()
                 if algo_data.empty: continue
 
                 color = self.get_algo_style(algo)["color"]
+
+                algo_pareto = self._pareto_front(algo_data)
+                if not algo_pareto.empty:
+                    ax.plot(algo_pareto["time"], algo_pareto["ratio"], color=color, linestyle="-",
+                            linewidth=1.8, alpha=0.85, zorder=3)
+
                 ax.plot(algo_data["time"], algo_data["ratio"], marker=".", color=color, linestyle="none", alpha=0.15, zorder=2)
 
                 algo_data["dist_to_ideal"] = np.sqrt((algo_data["time"] / def_t)**2 + (algo_data["ratio"] / def_r)**2)
@@ -151,7 +171,10 @@ class OptunaTradeoffPlotter(Plotter):
             ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
             sns.despine(ax=ax)
 
-            legend_elements = [Line2D([0], [0], marker='*', color='w', markerfacecolor='gold', markeredgecolor='black', markersize=12, label='MoSSo Default')]
+            legend_elements = [
+                Line2D([0], [0], color='gray', linestyle='-', linewidth=1.8, label='Pareto frontier'),
+                Line2D([0], [0], marker='*', color='w', markerfacecolor='gold', markeredgecolor='black', markersize=12, label='MoSSo Default'),
+            ]
             for prof, mk in [("Best Comp.", "v"), ("Fastest", "<"), ("Balanced", "D"), ("Matches Comp.", "s"), ("Matches Time", "o")]:
                 legend_elements.append(Line2D([0], [0], marker=mk, color='w', markerfacecolor='gray', markeredgecolor='black', markersize=8, label=prof))
 
@@ -284,6 +307,41 @@ class OptunaTradeoffPlotter(Plotter):
         generated_files.append(txt_path)
 
         return generated_files
+
+    @staticmethod
+    def _pareto_front(df: pd.DataFrame) -> pd.DataFrame:
+        """Return non-dominated points for objectives minimized on both axes.
+
+        The tradeoff plot uses time on x and compression ratio on y, where lower
+        is better for both. Sorting by time and keeping only strictly improving
+        ratios gives a clean frontier line without connecting dominated points.
+        """
+        required = {"time", "ratio"}
+        if df.empty or not required.issubset(df.columns):
+            return pd.DataFrame(columns=["time", "ratio"])
+
+        points = (
+            df.loc[:, ["time", "ratio"]]
+            .apply(pd.to_numeric, errors="coerce")
+            .replace([np.inf, -np.inf], np.nan)
+            .dropna()
+            .sort_values(["time", "ratio"], ascending=[True, True])
+        )
+        if points.empty:
+            return points
+
+        # If several configs have identical time, only the best ratio can be Pareto-optimal.
+        points = points.groupby("time", as_index=False, sort=True)["ratio"].min()
+
+        best_ratio = np.inf
+        keep = []
+        for ratio in points["ratio"]:
+            is_frontier_point = ratio < best_ratio
+            keep.append(is_frontier_point)
+            if is_frontier_point:
+                best_ratio = ratio
+
+        return points.loc[keep].reset_index(drop=True)
 
     @staticmethod
     def _format_raw_row(ds: str, algo: str, profile: str, pt: pd.Series, param_cols: list) -> dict:
