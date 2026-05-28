@@ -113,14 +113,6 @@ ALGORITHMS = {
         "template": ["p"],
         "binary_file": "pmags_dm",
     },
-    "mosso_default": {
-        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
-        "branch": "master",
-        "params": {"e": 3, "c": 120},
-        "type": "mosso",
-        "template": ["e", "c", "interval"],
-        "binary_file": "kdd20-mosso.jar"
-    },
     "full_solution": {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
@@ -129,10 +121,18 @@ ALGORITHMS = {
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
+    "mosso_default": {
+        "repo": "https://github.com/jihoonko/kdd20-mosso.git",
+        "branch": "master",
+        "params": {"e": 3, "c": 120},
+        "type": "mosso",
+        "template": ["e", "c", "interval"],
+        "binary_file": "kdd20-mosso.jar"
+    },
     "mosso_best_compression": {
         "repo": "https://github.com/jihoonko/kdd20-mosso.git",
         "branch": "master",
-        "params": {"e": 2, "c": 2336},
+        "params": {"e": 2, "c": 230},
         "type": "mosso",
         "template": ["e", "c", "interval"],
         "binary_file": "kdd20-mosso.jar"
