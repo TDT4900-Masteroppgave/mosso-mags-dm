@@ -1,6 +1,7 @@
 import optuna
 import pandas as pd
 from rich.panel import Panel
+from scipy.stats import gmean
 
 from scripts.config import PARAM_CONFIG, DATASETS
 from scripts.experiments.base_experiment import Experiment
@@ -53,15 +54,15 @@ class Bayesian(Experiment):
             def objective(trial):
                 params = self._resolve_algo_params(algo_config)
 
-                for p_name, conf in PARAM_CONFIG.items():
-                    if p_name in params and "bounds" in conf:
-                        bounds = conf["bounds"]
-                        step = conf.get("step")
+                for param, config in PARAM_CONFIG.items():
+                    if param in params and "bounds" in config:
+                        bounds = config["bounds"]
+                        step = config.get("step")
 
-                        if conf["type"] == int:
-                            params[p_name] = str(trial.suggest_int(p_name, bounds[0], bounds[1], step=step or 1))
+                        if config["type"] == int:
+                            params[param] = str(trial.suggest_int(param, bounds[0], bounds[1], step=step or 1))
                         else:
-                            params[p_name] = str(trial.suggest_float(p_name, bounds[0], bounds[1], step=step))
+                            params[param] = str(trial.suggest_float(param, bounds[0], bounds[1], step=step))
 
                 trial_times = []
                 trial_ratios = []
@@ -91,11 +92,15 @@ class Bayesian(Experiment):
                         })
 
                     edges = DATASETS.get(short_name, {}).get("meta", {}).get("edges", 0)
-                    trial_times.append(t_avg / edges)
-                    trial_ratios.append(r_avg)
 
-                avg_time = sum(trial_times) / len(trial_times)
-                avg_ratio = sum(trial_ratios) / len(trial_ratios)
+                    if edges > 0 and t_avg > 0:
+                        trial_times.append(t_avg / edges)
+                    if r_avg > 0:
+                        trial_ratios.append(r_avg)
+
+                avg_time = float(gmean(trial_times)) if trial_times else float('inf')
+                avg_ratio = float(gmean(trial_ratios)) if trial_ratios else float('inf')
+
                 return avg_time, avg_ratio
 
             study.optimize(objective, n_trials=self.args.trials, n_jobs=self.args.jobs, show_progress_bar=True)
