@@ -10,7 +10,7 @@ PLOTTERS: dict[str, type['Plotter']] = {}
 class Plotter(ABC):
     plotter_id: str = ""
     description: str = ""
-    dataset_order: list[str] = ["PR", "CA", "BK", "EN", "EA", "FB", "SL", "EU", "HW", "UK", "DB", "YT", "SK", "LJ"]
+    dataset_order: list[str] = ["CA", "PR", "BK", "EN", "EA", "SL", "FB", "DB", "AM", "CN", "YT", "SK", "IN", "EU", "LJ", "HW", "UK"]
 
     _metadata_cache = None
 

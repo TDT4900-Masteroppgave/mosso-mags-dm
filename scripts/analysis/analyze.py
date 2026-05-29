@@ -52,6 +52,14 @@ def _session_label(s: SessionInfo) -> str:
     return f"{_fmt_ts(s.timestamp)}   algos: {algos}   datasets: {ds_str}"
 
 
+def _sort_datasets(datasets: list[str]) -> list[str]:
+    """Sort datasets using the canonical order defined in Plotter."""
+    dataset_set = set(datasets)
+    ordered = [ds for ds in Plotter.dataset_order if ds in dataset_set]
+    remaining = sorted(ds for ds in dataset_set if ds not in Plotter.dataset_order)
+    return ordered + remaining
+
+
 def _pick_type(grouped: dict[str, list[SessionInfo]]) -> str | None:
     choices = [
         Choice(title=f"{t}  ({len(grouped[t])} session{'s' if len(grouped[t]) != 1 else ''})", value=t)
@@ -244,8 +252,10 @@ def main() -> None:
         return
 
     available_algos: list[str] = [str(x) for x in sorted(df["algorithm"].dropna().unique())]
+
+    # Applied the custom sorting logic instead of `sorted(...)`
     available_datasets: list[str] = (
-        [str(x) for x in sorted(df["dataset"].dropna().unique())]
+        _sort_datasets([str(x) for x in df["dataset"].dropna().unique()])
         if "dataset" in df.columns else []
     )
 
