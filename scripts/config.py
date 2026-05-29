@@ -117,7 +117,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure_thr",
         "type": "mosso",
-        "params": {"e": 2, "c": 50, "h": 5, "thr": 0.3},
+        "params": {"e": 3, "c": 50, "h": 5, "thr": 0.3},
         "template": ["e", "c", "interval", "h", "thr"],
         "binary_file": "mosso.jar",
     },
@@ -205,7 +205,7 @@ ALGORITHMS = {
         "repo": BASE_REPO_URL,
         "branch": "mags_strat/similarity_measure",
         "type": "mosso",
-        "params": {"e": 3, "c": 32, "h": 5, },
+        "params": {"e": 3, "c": 50, "h": 5},
         "template": ["e", "c", "interval", "h"],
         "binary_file": "mosso.jar",
     },
@@ -332,6 +332,13 @@ DATASETS = {
             "type": "Social"
         },
     },
+    "IC": {
+        "url": "https://suitesparse-collection-website.herokuapp.com/MM/LAW/indochina-2004.tar.gz"
+        , "filename": "indochina-2004.mtx",
+        "meta": {
+            "type": "Web"
+        }
+    }
 }
 
 DATASET_GROUP = {
@@ -339,11 +346,11 @@ DATASET_GROUP = {
     "medium": ["FB", "DB", "AM", "YT"],              # 600K - 3M edges (Standard benchmarks)
     "large": ["SK", "EU", "LJ", "HW", "UK"],         # 10M+ edges (Scalability & Memory testing)
 
-    "insertion": [ "PR", "EN", "FB", "EU",
-                   #"HW", "UK"
-                   ],
+    "insertion": [ "PR", "EN", "FB", "EU", "HW", "UK"],
     "dynamic": ["DB", "YT", "SK", "LJ"
                 ],
+
+    "mosso": ["PR", "EN", "FB", "EU", "DB", "YT", "SK", "LJ", "HW", "UK"],
 
     "tuning": ["PR", "EN", "FB", "DB", "YT"],
 
