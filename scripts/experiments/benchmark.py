@@ -1,6 +1,8 @@
 import pandas as pd
 from rich import box
 from rich.table import Table
+from scipy.stats import gmean
+
 from scripts.experiments.base_experiment import Experiment
 
 class Benchmark(Experiment):
@@ -41,32 +43,36 @@ class Benchmark(Experiment):
                     })
 
     def output(self, df: pd.DataFrame):
-        global_avg = df.groupby('algorithm', as_index=False)[['time', 'ratio']].mean()
+        # Calculate Geometric Mean instead of arithmetic mean
+        global_avg = df.groupby('algorithm', as_index=False)[['time', 'ratio']].agg(
+            lambda x: gmean(x.dropna()) if not x.dropna().empty else float('nan')
+        )
 
         baseline_vals = {}
         if self.args.baseline and self.args.baseline in global_avg['algorithm'].values:
             baseline_vals = global_avg[global_avg['algorithm'] == self.args.baseline].iloc[0].to_dict()
 
-        table = Table(title="Average Across All Datasets", box=box.SIMPLE, show_header=True, header_style="bold green")
+        # Updated titles and headers for GeoMean
+        table = Table(title="Geometric Mean Across All Datasets", box=box.SIMPLE, show_header=True, header_style="bold green")
         table.add_column("Algorithm")
-        table.add_column("Avg Time")
-        table.add_column("Avg Ratio")
+        table.add_column("GeoMean Time")
+        table.add_column("GeoMean Ratio")
 
         for _, row in global_avg.sort_values(by="algorithm").iterrows():
             algo = row['algorithm']
             t_val = row['time']
             r_val = row['ratio']
 
-            t_str = f"{t_val:.3f}s"
-            r_str = f"{r_val:.5f}"
+            t_str = f"{t_val:.3f}s" if pd.notnull(t_val) else "-"
+            r_str = f"{r_val:.5f}" if pd.notnull(r_val) else "-"
 
             if baseline_vals and algo != self.args.baseline:
                 base_t = baseline_vals.get('time', 0)
                 base_r = baseline_vals.get('ratio', 0)
 
-                if t_val > 0 and base_t > 0:
+                if pd.notnull(t_val) and t_val > 0 and pd.notnull(base_t) and base_t > 0:
                     t_str += f" [green]({base_t / t_val:.2f}x)[/green]"
-                if base_r > 0:
+                if pd.notnull(r_val) and r_val > 0 and pd.notnull(base_r) and base_r > 0:
                     r_str += f" [green]({r_val / base_r:.2f}x)[/green]"
 
             table.add_row(algo, t_str, r_str)
