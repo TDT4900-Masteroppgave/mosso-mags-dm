@@ -5,6 +5,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib import ticker
+from scipy.stats import gmean
+from rich.console import Console
+from rich.table import Table
 
 from scripts.analysis.plotters.base_plotter import Plotter, register
 
@@ -13,12 +16,12 @@ def _annotate_pairwise_ratios(ax, data: pd.DataFrame, algos: list[str], ordered_
     if len(algos) < 2:
         return
 
-    # Pivot data to get medians for all active algorithms
+    # Pivot data to get means for all active algorithms
     values = data.pivot_table(
         index="dataset",
         columns="algorithm",
         values="time_micros",
-        aggfunc="median",
+        aggfunc="mean",
     )
 
     global_y_max = 1
@@ -100,72 +103,70 @@ class BarChartPlotter(Plotter):
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         self.set_chart_theme()
         suffix = "_".join(algos)
+        ordered_datasets = self.get_dataset_order(data)
 
-        # 1. Generate the statistics base DataFrame
-        raw_stats = data.groupby(["dataset", "algorithm"])["time_micros"].agg(
-            Mean='mean',
-            Median='median',
-            Min='min',
-            Max='max',
-            StdDev='std',
-            Count='count'
+        # 1. Generate the statistics tables using rich
+        console = Console(record=True)
+        metadata = self.get_dataset_metadata()
+
+        # Group and calculate metrics
+        stats_df = data.groupby(["dataset", "algorithm"]).agg(
+            time_mean=('time_micros', 'mean'),
+            time_std=('time_micros', 'std')
         ).reset_index()
 
-        # Build the table text string dynamically for both terminal and disk storage
-        report_lines = []
-        report_lines.append("=" * 80)
-        report_lines.append(f"STATISTICS SUMMARY FOR ALGORITHMS: {', '.join(algos)}")
-        report_lines.append("=" * 80)
+        # --- TABLE 1: Dataset Statistics ---
+        table_ds = Table(title="Execution Time Statistics (Microseconds)", show_header=True, show_lines=True)
+        table_ds.add_column("Dataset", style="cyan")
+        table_ds.add_column("Nodes", style="dim")
+        table_ds.add_column("Edges", style="dim")
+        table_ds.add_column("Algorithm", style="magenta")
+        table_ds.add_column("Time Mean")
+        table_ds.add_column("Time StdDev")
 
+        for ds in ordered_datasets:
+            ds_data = stats_df[stats_df["dataset"] == ds]
+            if ds_data.empty: continue
+
+            ds_meta = metadata.get(ds, {})
+            nodes = str(ds_meta.get('nodes', '-'))
+            edges = str(ds_meta.get('edges', '-'))
+
+            for _, row in ds_data.iterrows():
+                algo = str(row['algorithm'])
+                if algo not in algos: continue
+
+                t_mean = f"{row['time_mean']:.3g}" if pd.notnull(row['time_mean']) else "-"
+                t_std = f"{row['time_std']:.3g}" if pd.notnull(row['time_std']) else "-"
+
+                table_ds.add_row(ds, nodes, edges, algo, t_mean, t_std)
+
+        console.print(table_ds)
+        console.print("\n")
+
+        # --- TABLE 2: Geometric Means Summary ---
+        table_gm = Table(title="Geometric Means Summary", show_header=True)
+        table_gm.add_column("Algorithm", style="magenta")
+        table_gm.add_column("Time Mean (GeoMean)")
         for algo in algos:
-            algo_stats = raw_stats[raw_stats["algorithm"] == algo].copy()
-            if algo_stats.empty:
-                continue
+            algo_data = stats_df[stats_df['algorithm'] == algo]
+            if algo_data.empty: continue
 
-            report_lines.append(f"\n▶ Algorithm: {algo}")
-            report_lines.append(f"{'Dataset':<15} {'Mean':<10} {'Med.':<10} {'Min':<10} {'Max':<10} {'Std.':<10}")
-            report_lines.append("-" * 65)
+            t_mean_vals = algo_data['time_mean'].dropna()
 
-            # Append rows for each dataset
-            for _, row in algo_stats.iterrows():
-                report_lines.append(
-                    f"{row['dataset']:<15} {row['Mean']:.2e} {row['Median']:.2e} "
-                    f"{row['Min']:.2e} {row['Max']:.2e} {row['StdDev']:.2e}"
-                )
+            t_mean_gm = gmean(t_mean_vals) if not t_mean_vals.empty else np.nan
 
-            report_lines.append("-" * 65)
+            table_gm.add_row(
+                algo,
+                f"{t_mean_gm:.3g}" if pd.notnull(t_mean_gm) else "-",
+            )
 
-            # Option A: Geometric Mean
-            geom_mean_mean = np.exp(np.mean(np.log(algo_stats['Mean'])))
-            geom_mean_med = np.exp(np.mean(np.log(algo_stats['Median'])))
-            report_lines.append(f"{'Opt A: Geom Mean':<15} {geom_mean_mean:.2e} {geom_mean_med:.2e} {'--':<10} {'--':<10} {'--':<10}")
+        console.print(table_gm)
 
-            # Option B: Global Pool metrics
-            algo_data = data[data["algorithm"] == algo]
-            global_min = algo_data['time_micros'].min()
-            global_max = algo_data['time_micros'].max()
-
-            n_minus_1 = algo_stats['Count'] - 1
-            sum_n_minus_1 = np.sum(n_minus_1)
-            if sum_n_minus_1 > 0:
-                pooled_variance = np.sum(n_minus_1 * (algo_stats['StdDev'] ** 2)) / sum_n_minus_1
-                pooled_std = np.sqrt(pooled_variance)
-            else:
-                pooled_std = 0.0
-
-            report_lines.append(f"{'Opt B: Global':<15} {'--':<10} {'--':<10} {global_min:.2e} {global_max:.2e} {pooled_std:.2e}")
-
-        report_lines.append("=" * 80 + "\n")
-
-        # Combine the string matrix
-        full_report_text = "\n".join(report_lines)
-
-        # Print to terminal
-        print(full_report_text)
-
-        # Save exact text printout layout to file
-        txt_path = out_dir / f"execution_time_stats_{suffix}.txt"
-        txt_path.write_text(full_report_text, encoding="utf-8")
+        # Save tables to text file (maintains styling characters)
+        txt_path = out_dir / f"combined_stats.txt"
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(console.export_text())
 
         # 2. Generate the plot
         fig, ax = plt.subplots(figsize=(6.5, 3.8))
@@ -181,7 +182,7 @@ class BarChartPlotter(Plotter):
             hue_order=algos,
             order=ordered_datasets,
             palette=palette,
-            estimator=np.median,
+            estimator=np.mean,
             errorbar=None,
             edgecolor="white",
             linewidth=0.8,

@@ -24,9 +24,6 @@ class CombinedBarChartPlotter(Plotter):
         has_time = "time" in data.columns
         has_ratio = "ratio" in data.columns
 
-        # ==========================================
-        # 1. GENERATE UNIFIED STATISTICS TABLES
-        # ==========================================
         agg_dict = {}
         if has_time:
             agg_dict['time'] = ['mean', 'std']
@@ -68,8 +65,8 @@ class CombinedBarChartPlotter(Plotter):
                 row_data = [ds, nodes, edges, algo]
 
                 if has_time:
-                    t_mean = f"{row['time_mean']:.6f}".rstrip('0').rstrip('.') if pd.notnull(row.get('time_mean')) else "-"
-                    t_std = f"{row['time_std']:.6f}".rstrip('0').rstrip('.') if pd.notnull(row.get('time_std')) else "-"
+                    t_mean = f"{row['time_mean']:.3f}".rstrip('0').rstrip('.') if pd.notnull(row.get('time_mean')) else "-"
+                    t_std = f"{row['time_std']:.3f}".rstrip('0').rstrip('.') if pd.notnull(row.get('time_std')) else "-"
                     row_data.extend([t_mean, t_std])
 
                 if has_ratio:
@@ -97,12 +94,14 @@ class CombinedBarChartPlotter(Plotter):
             if has_time:
                 t_vals = algo_data['time_mean'].dropna()
                 t_gm = gmean(t_vals) if not t_vals.empty else np.nan
-                row_data.append(f"{t_gm:.6f}".rstrip('0').rstrip('.') if pd.notnull(t_gm) else "-")
+                # Format string to fixed 2 decimal places
+                row_data.append(f"{t_gm:.2f}" if pd.notnull(t_gm) else "-")
 
             if has_ratio:
                 r_vals = algo_data['ratio_mean'].dropna()
                 r_gm = gmean(r_vals) if not r_vals.empty else np.nan
-                row_data.append(f"{r_gm:.6f}".rstrip('0').rstrip('.') if pd.notnull(r_gm) else "-")
+                # Format string to fixed 4 decimal places
+                row_data.append(f"{r_gm:.4f}" if pd.notnull(r_gm) else "-")
 
             table_gm.add_row(*row_data)
 
@@ -114,9 +113,6 @@ class CombinedBarChartPlotter(Plotter):
             f.write(console.export_text())
         artifacts.append(txt_path)
 
-        # ==========================================
-        # 2. GENERATE BAR CHARTS (Time & Ratio)
-        # ==========================================
         palette = [self.get_algo_style(algo)["color"] for algo in algos]
 
         if has_time:
@@ -130,7 +126,7 @@ class CombinedBarChartPlotter(Plotter):
             total_bars_time = len(data["dataset"].unique()) * len(algos)
             if total_bars_time <= 20:
                 for container in ax_time.containers:
-                    labels = [f"{val:.4f}".rstrip('0').rstrip('.') if '.' in f"{val:.4f}" else str(val) for val in container.datavalues]
+                    labels = [f"{val:.0f}".rstrip('0').rstrip('.') if '.' in f"{val:.4f}" else str(val) for val in container.datavalues]
                     ax_time.bar_label(container, labels=labels, padding=3, fontsize=8, color='#4A5568')
 
             plt.xlabel("")
@@ -160,7 +156,7 @@ class CombinedBarChartPlotter(Plotter):
             total_bars_comp = len(data["dataset"].unique()) * len(algos)
             if total_bars_comp <= 20:
                 for container in ax_comp.containers:
-                    labels = [f"{val:.4f}".rstrip('0').rstrip('.') if '.' in f"{val:.4f}" else str(val) for val in container.datavalues]
+                    labels = [f"{val:.2f}".rstrip('0').rstrip('.') if '.' in f"{val:.4f}" else str(val) for val in container.datavalues]
                     ax_comp.bar_label(container, labels=labels, padding=3, fontsize=8, color='#4A5568')
 
             sns.despine(ax=ax_comp, top=True, right=True)

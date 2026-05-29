@@ -101,8 +101,8 @@ class BarChartPlotter(Plotter):
 
         plt.tight_layout()
 
-        png_path = out_dir / f"runtime_bar_chart_{suffix}.png"
-        pdf_path = out_dir / f"runtime_bar_chart_{suffix}.pdf"
+        png_path = out_dir / f"runtime_bar_chart_log_{suffix}.png"
+        pdf_path = out_dir / f"runtime_bar_chart_log_{suffix}.pdf"
         plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
         plt.savefig(pdf_path, format="pdf", bbox_inches="tight")
         plt.close()
