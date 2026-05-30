@@ -333,8 +333,22 @@ DATASETS = {
         },
     },
     "IC": {
-        "url": "https://suitesparse-collection-website.herokuapp.com/MM/LAW/indochina-2004.tar.gz"
-        , "filename": "indochina-2004.mtx",
+        "url": "https://suitesparse-collection-website.herokuapp.com/MM/LAW/indochina-2004.tar.gz",
+        "filename": "indochina-2004.mtx",
+        "meta": {
+            "type": "Web"
+        }
+    },
+    "UK-05": {
+        "url": "https://suitesparse-collection-website.herokuapp.com/MM/LAW/uk-2005.tar.gz",
+        "filename": "uk-2005.mtx",
+        "meta": {
+            "type": "Web"
+        }
+    },
+    "IT": {
+        "url": "https://suitesparse-collection-website.herokuapp.com/MM/LAW/it-2004.tar.gz",
+        "filename": "it-2004.mtx",
         "meta": {
             "type": "Web"
         }
@@ -342,15 +356,8 @@ DATASETS = {
 }
 
 DATASET_GROUP = {
-    "small": ["CA", "PR", "EN", "BK", "EA", "SL"],   # < 600K edges (Fast debugging)
-    "medium": ["FB", "DB", "AM", "YT"],              # 600K - 3M edges (Standard benchmarks)
-    "large": ["SK", "EU", "LJ", "HW", "UK"],         # 10M+ edges (Scalability & Memory testing)
-
-    "insertion": [ "PR", "EN", "FB", "EU", "HW", "UK"],
-    "dynamic": ["DB", "YT", "SK", "LJ"
-                ],
-
     "mosso": ["PR", "EN", "FB", "EU", "DB", "YT", "SK", "LJ", "HW", "UK"],
+    "mags": ["CA", "EN", "BK", "EA", "SL", "DB", "AM", "CN", "YT", "SK", "IN", "EU", "LJ", "IC", "UK-05", "IT"],
 
     "tuning": ["PR", "EN", "FB", "DB", "YT"],
 
@@ -358,11 +365,4 @@ DATASET_GROUP = {
     "sparse": ["CA", "EA", "DB", "YT"],              # Low average degree / tree-like
     "skewed": ["EN", "YT", "SK", "EU"],              # Massive max-degree hub nodes
 
-    "social": ["FB", "BK", "SL", "YT", "LJ"],
-    "web": ["EU", "UK", "SK"],
-
-    "mags_small": ["CA", "EN", "BK", "EA", "SL", "DB"],
-    "mags_large": ["AM", "CN", "YT", "SK", "IN", "EU", "LJ"
-                   #"UK"
-                   ]
 }
