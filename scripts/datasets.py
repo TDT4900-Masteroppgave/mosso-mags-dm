@@ -1,4 +1,3 @@
-import sys
 import gzip
 import json
 import shutil
@@ -11,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from collections import defaultdict
 
-from scripts.config import DATASETS_DIR, DATASET_GROUP, DATASETS
+from scripts.config import DATASETS_DIR, DATASETS
 
 
 def clean_and_write(src: str, dst: str, algo_type: str) -> None:
@@ -130,6 +129,7 @@ def generate_master_stream(src: str, dst: str, p_delete: float = 0.1) -> int:
     removed_count = 0
     stream_rng = random.Random(42)
 
+    # Generate tentative events
     with open(src, "r", encoding="utf-8") as fin:
         for line in fin:
             parts = line.split()
@@ -139,16 +139,32 @@ def generate_master_stream(src: str, dst: str, p_delete: float = 0.1) -> int:
                 t_insert = stream_rng.random()
                 events.append((t_insert, u, v, "1"))
 
+                # Schedule a tentative deletion
                 if stream_rng.random() < p_delete:
                     t_delete = stream_rng.uniform(t_insert, 1.0)
                     events.append((t_delete, u, v, "-1"))
-                    removed_count += 1
 
+    # Sort chronologically
     events.sort(key=lambda x: x[0])
+
+    # Simulate topology and write valid events
+    adj = defaultdict(set)
 
     with open(dst, "w", encoding="utf-8") as fout:
         for _, u, v, indicator in events:
-            fout.write(f"{u}\t{v}\t{indicator}\n")
+            if indicator == "1":
+                adj[u].add(v)
+                adj[v].add(u)
+                fout.write(f"{u}\t{v}\t1\n")
+
+            elif indicator == "-1":
+                # Triadic Closure Check: Do u and v share an active mutual neighbor?
+                if adj[u].intersection(adj[v]):
+                    adj[u].remove(v)
+                    adj[v].remove(u)
+                    fout.write(f"{u}\t{v}\t-1\n")
+                    removed_count += 1
+                # If the intersection is empty, the deletion is discarded
 
     return removed_count
 
