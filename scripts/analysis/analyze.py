@@ -303,7 +303,7 @@ def main() -> None:
                 all_out_paths.extend(out_paths)
 
         if all_out_paths:
-            console.print(f"\n[green]✓[/green] All artifacts saved to directory:\n[bold]{out_dir}[/bold]")
+            console.print(f"[green]✓[/green] All artifacts saved to directory:\n[bold]{out_dir}[/bold]")
         else:
             console.print("\n[yellow]No artifacts were generated.[/yellow]")
     except Exception as e:

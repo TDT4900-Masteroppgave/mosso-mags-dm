@@ -134,12 +134,10 @@ class CombinedBarChartPlotter(Plotter):
             plt.legend(title="", bbox_to_anchor=(0.5, 1.15), loc='upper center', ncol=len(algos), frameon=False)
             plt.tight_layout()
 
-            png_path_time = out_dir / "runtime_bar_chart.png"
-            pdf_path_time = out_dir / "runtime_bar_chart.pdf"
-            plt.savefig(png_path_time, dpi=300, bbox_inches='tight')
-            plt.savefig(pdf_path_time, format="pdf", bbox_inches='tight')
+            svg_path_time = out_dir / "runtime_bar_chart.svg"
+            plt.savefig(svg_path_time, format="svg", bbox_inches='tight')
             plt.close(fig_time)
-            artifacts.extend([png_path_time, pdf_path_time])
+            artifacts.extend([svg_path_time])
 
         if has_ratio:
             fig_comp, ax_comp = plt.subplots(figsize=(6, 3.5))
@@ -163,11 +161,9 @@ class CombinedBarChartPlotter(Plotter):
             ax_comp.legend(title="", bbox_to_anchor=(0.5, 1.15), loc='upper center', ncol=len(algos), frameon=False, fontsize=9)
             plt.tight_layout()
 
-            png_path_comp = out_dir / "compression_bar_chart.png"
-            pdf_path_comp = out_dir / "compression_bar_chart.pdf"
-            plt.savefig(png_path_comp, dpi=300, bbox_inches='tight')
-            plt.savefig(pdf_path_comp, format="pdf", bbox_inches='tight')
+            svg_path_comp = out_dir / "compression_bar_chart.svg"
+            plt.savefig(svg_path_comp, format="svg", bbox_inches='tight')
             plt.close(fig_comp)
-            artifacts.extend([png_path_comp, pdf_path_comp])
+            artifacts.extend([svg_path_comp])
 
         return artifacts

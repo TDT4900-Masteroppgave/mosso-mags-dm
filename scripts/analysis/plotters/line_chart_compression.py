@@ -86,12 +86,10 @@ class LineChartCompressionPlotter(Plotter):
 
             plt.tight_layout()
 
-            png_path = out_dir / f"compression_line_{ds}.png"
-            pdf_path = out_dir / f"compression_line_{ds}.pdf"
-            plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
-            plt.savefig(pdf_path, format="pdf", bbox_inches="tight")
+            svg_path = out_dir / f"compression_line_{ds}.svg"
+            plt.savefig(svg_path, format="svg", bbox_inches="tight")
             plt.close()
 
-            generated_files.extend([png_path, pdf_path])
+            generated_files.extend([svg_path])
 
         return generated_files

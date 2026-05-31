@@ -143,13 +143,11 @@ class LineChartSweep(Plotter):
 
                 fig.tight_layout()
 
-                out_path = out_dir / f"sweep_{algo}_{param_name}_{metric}.png"
-                pdf_path = out_dir / f"sweep_{algo}_{param_name}_{metric}.pdf"
-                fig.savefig(out_path, format="png", dpi=300, bbox_inches="tight")
-                fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+                svg_path = out_dir / f"sweep_{algo}_{param_name}_{metric}.svg"
+                fig.savefig(svg_path, format="svg", bbox_inches="tight")
                 plt.close(fig)
 
-                generated_files.extend([out_path, pdf_path])
+                generated_files.extend([svg_path])
 
         # ---------------------------------------------------------
         # Print and Save the Summary Tables

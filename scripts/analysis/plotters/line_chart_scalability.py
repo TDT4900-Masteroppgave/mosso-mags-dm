@@ -194,12 +194,10 @@ class LineChartScalabilityPlotter(Plotter):
 
             fig.subplots_adjust(left=0.20, right=0.98, bottom=0.32, top=0.96)
 
-            png_path = out_dir / f"scalability_line_{ds}.png"
-            pdf_path = out_dir / f"scalability_line_{ds}.pdf"
-            fig.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
-            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+            svg_path = out_dir / f"scalability_line_{ds}.svg"
+            fig.savefig(svg_path, format="svg", bbox_inches="tight")
             plt.close(fig)
 
-            generated_files.extend([png_path, pdf_path])
+            generated_files.extend([svg_path])
 
         return generated_files

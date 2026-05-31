@@ -34,7 +34,9 @@ class OptunaHistoryPlotter(Plotter):
             return generated_files
 
         datasets = data["dataset"].unique() if "dataset" in data.columns else [context]
-        time_label = options.get("time_label", "time (seconds)").lower()
+
+        # --- Update the default label ---
+        time_label = options.get("time_label", "time (µs)").lower()
 
         for ds in datasets:
             for algo_name in algos:
@@ -51,7 +53,8 @@ class OptunaHistoryPlotter(Plotter):
 
                     for t in trials:
                         trial_numbers.append(t.number)
-                        times.append(t.values[0])
+                        # --- Multiply by 1,000,000 to convert seconds to microseconds ---
+                        times.append(t.values[0] * 1_000_000)
                         ratios.append(t.values[1])
 
                     if not times:
@@ -123,13 +126,11 @@ class OptunaHistoryPlotter(Plotter):
 
                     fig.tight_layout()
 
-                    out_path = out_dir / f"optuna_history_{ds}_{algo_name}.png"
-                    pdf_path = out_dir / f"optuna_history_{ds}_{algo_name}.pdf"
-                    fig.savefig(out_path, format="png", dpi=300, bbox_inches="tight")
-                    fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+                    svg_path = out_dir / f"optuna_history_{ds}_{algo_name}.svg"
+                    fig.savefig(svg_path, format="svg", bbox_inches="tight")
                     plt.close(fig)
 
-                    generated_files.extend([out_path, pdf_path])
+                    generated_files.extend([svg_path])
 
                 except Exception as e:
                     console.print(f"[dim]Could not generate history for {algo_name}: {e}[/dim]")

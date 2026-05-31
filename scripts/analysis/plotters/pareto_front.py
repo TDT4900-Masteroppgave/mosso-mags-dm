@@ -186,12 +186,10 @@ class OptunaPlotter(Plotter):
                 )
 
             fig.tight_layout()
-            out_path = out_dir / f"pareto_front_{ds}.png"
-            pdf_path = out_dir / f"pareto_front_{ds}.pdf"
-            fig.savefig(out_path, format="png", dpi=300, bbox_inches="tight")
-            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+            svg_path = out_dir / f"pareto_front_{ds}.svg"
+            fig.savefig(svg_path, format="svg", bbox_inches="tight")
             plt.close(fig)
-            generated_files.extend([out_path, pdf_path])
+            generated_files.extend([svg_path])
 
         # ==========================================================
         # 2. GLOBAL FRONTIER BY ALGORITHM (ALL DATASETS IN ONE PLOT)
@@ -289,13 +287,11 @@ class OptunaPlotter(Plotter):
 
         plt.title("Global Pareto Frontier by Algorithm", fontsize=12, pad=10, weight="bold")
         fig_g.tight_layout()
-        global_png = out_dir / "pareto_front_global.png"
-        global_pdf = out_dir / "pareto_front_global.pdf"
-        fig_g.savefig(global_png, format="png", dpi=300, bbox_inches="tight")
-        fig_g.savefig(global_pdf, format="pdf", bbox_inches="tight")
+        global_svg = out_dir / "pareto_front_global.svg"
+        fig_g.savefig(global_svg, format="svg", bbox_inches="tight")
         plt.close(fig_g)
 
-        generated_files.extend([global_png, global_pdf])
+        generated_files.extend([global_svg])
 
         # ==========================================================
         # 3. STATISTICAL TABLES EXPORT

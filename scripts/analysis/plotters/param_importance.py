@@ -118,10 +118,8 @@ class ParamImportancePlotter(Plotter):
         fig.tight_layout()
 
         metric_slug = metric.lower().replace(' ', '_')
-        out_path = out_dir / f"param_importance_{algo}_{metric_slug}.png"
-        pdf_path = out_dir / f"param_importance_{algo}_{metric_slug}.pdf"
-        fig.savefig(out_path, format="png", dpi=300, bbox_inches="tight")
-        fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+        svg_path = out_dir / f"param_importance_{algo}_{metric_slug}.svg"
+        fig.savefig(svg_path, format="svg", bbox_inches="tight")
         plt.close(fig)
 
-        return [out_path, pdf_path]
+        return [svg_path]

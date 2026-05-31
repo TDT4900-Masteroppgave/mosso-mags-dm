@@ -212,10 +212,8 @@ class BarChartPlotter(Plotter):
 
         plt.tight_layout()
 
-        png_path = out_dir / f"execution_time_{suffix}.png"
-        pdf_path = out_dir / f"execution_time_{suffix}.pdf"
-        plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
-        plt.savefig(pdf_path, format="pdf", bbox_inches="tight")
+        svg_path = out_dir / f"execution_time_{suffix}.svg"
+        plt.savefig(svg_path, format="svg", bbox_inches="tight")
         plt.close()
 
-        return [png_path, pdf_path, txt_path]
+        return [svg_path, txt_path]
