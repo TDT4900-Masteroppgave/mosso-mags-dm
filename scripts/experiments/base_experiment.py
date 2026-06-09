@@ -78,6 +78,7 @@ class Experiment(ABC):
             self.datasets_to_run = get_datasets_to_run(self.args)
             setup_directories()
 
+            self.logger.print(f"[dim]Output:[/dim] {self.session_dir}")
             self.print_parameters()
 
             self.logger.rule("[bold]Preprocessing[/bold]")
@@ -102,7 +103,7 @@ class Experiment(ABC):
             self.logger.debug(traceback.format_exc())
         finally:
             elapsed = time.time() - start_time
-            self.logger.print(f"[dim]Total Benchmark Time:[/dim] {elapsed:.2f} seconds")
+            self.logger.print(f"[dim]Total Time:[/dim] {elapsed:.2f} seconds")
             self.logger.print(f"[dim]Output:[/dim] {self.session_dir}")
 
     def _print_status(self, i: int, short_name: str) -> None:
@@ -228,7 +229,6 @@ class Experiment(ABC):
         })
 
     def _build_algorithms(self) -> None:
-        self.logger.rule("[bold]Building[/bold]")
         for algo_name, config in self.active_algos.items():
             repo = config.get('repo', '')
             branch = config.get('branch', '')
@@ -302,10 +302,12 @@ class Experiment(ABC):
         self.logger.print(ds_table)
 
     def print_parameters(self) -> None:
-        self.logger.print("[bold]General Parameters[/bold]")
+        self.logger.print("[bold]Parameters[/bold]")
         gen_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
         gen_table.add_column("Argument")
         gen_table.add_column("Value")
+
+        gen_table.add_row("script_type", self.benchmark_type)
 
         for key, value in vars(self.args).items():
             # Skip parameters that belong to algorithm configs
@@ -333,9 +335,16 @@ class Experiment(ABC):
             hp_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
             hp_table.add_column("Parameter")
             hp_table.add_column("Value", justify="right")
+            hp_table.add_column("Type")
+            hp_table.add_column("Bounds")
+            hp_table.add_column("Step")
 
             for param_key in template:
                 val = params.get(param_key, getattr(self.args, param_key, "N/A"))
-                hp_table.add_row(param_key, str(val))
+                p_config = PARAM_CONFIG.get(param_key, {})
+                p_type = p_config.get("type").__name__ if "type" in p_config else ""
+                p_bounds = str(p_config.get("bounds", ""))
+                p_step = str(p_config.get("step", ""))
+                hp_table.add_row(param_key, str(val), p_type, p_bounds, p_step)
 
             self.logger.print(hp_table)
