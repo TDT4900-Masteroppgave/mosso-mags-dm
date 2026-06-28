@@ -24,7 +24,7 @@ EXPERIMENT_PLOTS = {
     "compression_checkpoints": ["line_chart_compression"],
     "sweep": ["line_chart_sweep"],
     "scalability": ["line_chart_scalability"],
-    "bayesian": ["pareto_front", "pareto_tradeoff", "trial_history", "param_importance"],
+    "bayesian": ["pareto_front", "pareto_tradeoff"],
 }
 
 _STYLE = questionary.Style([
@@ -159,7 +159,6 @@ def _pick_plot(session_type: str) -> list[type['Plotter']] | None:
     for pid in allowed_plot_ids:
         plotter_cls = get_plotter(pid)
         if plotter_cls:
-            # We set checked=True by default so it selects all available plots
             choices.append(Choice(title=f"{plotter_cls.description}", value=plotter_cls, checked=True))
 
     if not choices:
@@ -253,7 +252,6 @@ def main() -> None:
 
     available_algos: list[str] = [str(x) for x in sorted(df["algorithm"].dropna().unique())]
 
-    # Applied the custom sorting logic instead of `sorted(...)`
     available_datasets: list[str] = (
         _sort_datasets([str(x) for x in df["dataset"].dropna().unique()])
         if "dataset" in df.columns else []
@@ -277,7 +275,6 @@ def main() -> None:
         console.print("[yellow]No plots to generate selected.[/yellow]")
         return
 
-    # Print a beautiful summary panel right before generating
     plot_descriptions = ", ".join(p.description for p in plotter_classes)
     summary_text = (
         f"[bold]Session:[/bold] {_fmt_ts(session.timestamp)}\n"
@@ -292,7 +289,6 @@ def main() -> None:
     options = {
         "datasets": datasets,
         "time_label": time_label,
-        "db_path": session.path / "optuna_study.db",
     }
 
     try:

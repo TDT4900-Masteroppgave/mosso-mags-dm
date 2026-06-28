@@ -43,7 +43,6 @@ class Benchmark(Experiment):
                     })
 
     def output(self, df: pd.DataFrame):
-        # Calculate Geometric Mean instead of arithmetic mean
         global_avg = df.groupby('algorithm', as_index=False)[['time', 'ratio']].agg(
             lambda x: gmean(x.dropna()) if not x.dropna().empty else float('nan')
         )
@@ -52,7 +51,6 @@ class Benchmark(Experiment):
         if self.args.baseline and self.args.baseline in global_avg['algorithm'].values:
             baseline_vals = global_avg[global_avg['algorithm'] == self.args.baseline].iloc[0].to_dict()
 
-        # Updated titles and headers for GeoMean
         table = Table(title="Geometric Mean Across All Datasets", box=box.SIMPLE, show_header=True, header_style="bold green")
         table.add_column("Algorithm")
         table.add_column("GeoMean Time")

@@ -1,15 +1,32 @@
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
-from scripts.analysis.plotters.base_plotter import Plotter, register
+from scripts.analysis.plotters.base_plotter import FigureProfile, Plotter, register
+
 
 @register
 class LineChartCompressionPlotter(Plotter):
     plotter_id = "line_chart_compression"
     description = "Line chart for streaming compression over time"
+    FIGURE_PROFILE = FigureProfile(
+        figsize=(10.8, 6.075),
+        font_size=35.0,
+        label_size=30.0,
+        tick_size=30.0,
+        legend_size=28.0,
+        line_width=3.5,
+        marker_size=10.0,
+        extra_rc={
+            "axes.linewidth": 2.0,
+            "xtick.major.size": 7.0,
+            "ytick.major.size": 7.0,
+            "xtick.major.width": 2.0,
+            "ytick.major.width": 2.0,
+        },
+    )
 
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
-        self.set_chart_theme()
+        profile = self.use_figure_profile(self.FIGURE_PROFILE, options, profile_name="compression_line")
 
         data["change_ratio"] = pd.to_numeric(data["change_ratio"], errors='coerce')
 
@@ -21,8 +38,7 @@ class LineChartCompressionPlotter(Plotter):
         for ds in datasets:
             ds_data = data[data["dataset"] == ds]
 
-            import seaborn as sns
-            fig, ax = plt.subplots(figsize=(6, 3.5))
+            fig, ax = self.create_figure(profile)
 
             for algo in algos:
                 algo_data = ds_data[ds_data["algorithm"] == algo].sort_values("change_ratio")
@@ -45,7 +61,6 @@ class LineChartCompressionPlotter(Plotter):
                         label=algo,
                         color=color,
                         linestyle="-",
-                        linewidth=1.5,
                         marker=""
                     )
 
@@ -57,14 +72,12 @@ class LineChartCompressionPlotter(Plotter):
                         color=color,
                         linestyle="",
                         marker=marker,
-                        markersize=6,
                         markeredgecolor=color,
                         markerfacecolor="none",
-                        mew=1.2
                     )
 
-            ax.set_ylabel("Compression Ratio", fontsize=12, style='italic')
-            ax.set_xlabel("Ratio of Processed Changes", fontsize=12, style='italic')
+            ax.set_ylabel("Relative Size", style='italic')
+            ax.set_xlabel("Ratio of Processed Changes", style='italic')
 
             def format_checkpoint(x, _):
                 return f"{x:.1f}"
@@ -73,23 +86,21 @@ class LineChartCompressionPlotter(Plotter):
             ax.set_xticks(paper_ticks)
             ax.set_xlim(-0.05, 1.05)
 
-            sns.despine(ax=ax, top=True, right=True)
+            self.despine(ax, top=True, right=True)
 
-            ax.legend(
-                title="",
-                bbox_to_anchor=(0.5, 1.15),
+            self.add_centered_legend(
+                ax,
+                y=1.25,
                 loc='upper center',
-                ncol=len(algos),
-                frameon=False,
-                fontsize=9
+                ncol=min(len(algos), 4),
             )
 
-            plt.tight_layout()
+            fig.tight_layout()
 
-            svg_path = out_dir / f"compression_line_{ds}.svg"
-            plt.savefig(svg_path, format="svg", bbox_inches="tight")
-            plt.close()
+            pdf_path = out_dir / f"compression_line_{ds}.pdf"
+            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+            plt.close(fig)
 
-            generated_files.extend([svg_path])
+            generated_files.extend([pdf_path])
 
         return generated_files

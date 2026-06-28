@@ -39,7 +39,6 @@ def create_slice(source_path: str, max_lines: int) -> str:
     if partial_path.exists() and partial_path.stat().st_mtime >= source.stat().st_mtime:
         return str(partial_path)
 
-    # Pure text copy (no integer parsing, no sets, no logic = incredibly fast)
     with open(source, "r", encoding="utf-8") as fin, open(partial_path, "w", encoding="utf-8") as out:
         for i, line in enumerate(fin):
             if i >= max_lines:

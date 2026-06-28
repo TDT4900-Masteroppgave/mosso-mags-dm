@@ -155,7 +155,6 @@ class Experiment(ABC):
             cli_val = getattr(self.args, param, None)
             default_val = PARAM_CONFIG.get(param, {}).get("default")
 
-            # Priority: 1. Algo Config -> 2. CLI Args -> 3. Param Defaults
             params[param] = str(
                 config_val if config_val is not None else (cli_val if cli_val is not None else default_val))
         return params
@@ -278,7 +277,7 @@ class Experiment(ABC):
 
         ds_table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
         ds_table.add_column("ID")
-        ds_table.add_column("Type")  # New column added here
+        ds_table.add_column("Type")
         ds_table.add_column("Nodes", justify="right")
         ds_table.add_column("Edges", justify="right")
 
@@ -287,7 +286,7 @@ class Experiment(ABC):
             meta = ds.get("meta", {})
             nodes = meta.get("nodes", "N/A")
             edges = meta.get("edges", "N/A")
-            ds_type = meta.get("type", "N/A")  # Extracting type
+            ds_type = meta.get("type", "N/A")
 
             disp_nodes = f"{nodes:,}" if isinstance(nodes, int) else str(nodes)
             disp_edges = f"{edges:,}" if isinstance(edges, int) else str(edges)
@@ -310,7 +309,6 @@ class Experiment(ABC):
         gen_table.add_row("script_type", self.benchmark_type)
 
         for key, value in vars(self.args).items():
-            # Skip parameters that belong to algorithm configs
             if key not in PARAM_CONFIG:
                 if isinstance(value, list):
                     display_val = ", ".join(map(str, value))

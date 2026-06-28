@@ -1,11 +1,12 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
+import math
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
+from matplotlib.ticker import MaxNLocator
 
-from scripts.analysis.plotters.base_plotter import Plotter, register
+from scripts.analysis.plotters.base_plotter import FigureProfile, Plotter, register
 
 
 def format_param_tick(value) -> str:
@@ -19,6 +20,22 @@ def format_param_tick(value) -> str:
 class LineChartSweep(Plotter):
     plotter_id = "line_chart_sweep"
     description = "Parameter sweep visualization (1 plot per algorithm, lines = datasets)"
+    FIGURE_PROFILE = FigureProfile(
+        figsize=(10.8, 6.075),
+        font_size=38.0,
+        label_size=35.0,
+        tick_size=20.0,
+        legend_size=28.0,
+        line_width=3.5,
+        marker_size=10.0,
+        extra_rc={
+            "axes.linewidth": 2.0,
+            "xtick.major.size": 7.0,
+            "ytick.major.size": 7.0,
+            "xtick.major.width": 2.0,
+            "ytick.major.width": 2.0,
+        },
+    )
 
     def __init__(self):
         super().__init__()
@@ -27,12 +44,10 @@ class LineChartSweep(Plotter):
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
         options = options or {}
 
-        self.set_chart_theme()
+        profile = self.use_figure_profile(self.FIGURE_PROFILE, options, profile_name="sweep_line")
         generated_files = []
-        console = Console()
 
         if "param_name" not in data.columns:
-            console.print("[bold red][Warning] 'param_name' column missing.[/bold red]")
             return generated_files
 
         param_name = data["param_name"].iloc[0]
@@ -46,11 +61,9 @@ class LineChartSweep(Plotter):
             ("ratio", "relative size")
         ]
 
-        # Use the established theme colors and markers from base_plotter
         colors = self.THEME_COLORS
         markers = self.THEME_MARKERS
 
-        # Container for our start-to-end statistics
         sweep_stats = []
 
         for algo in algorithms:
@@ -59,31 +72,24 @@ class LineChartSweep(Plotter):
 
             algo_data["param_value"] = pd.to_numeric(algo_data["param"], errors="coerce")
             if algo_data["param_value"].isna().any():
-                console.print(
-                    f"[bold yellow][Warning][/bold yellow] Non-numeric parameter values found for {algo}; "
-                    "falling back to original sweep order."
-                )
                 ordered_params = list(dict.fromkeys(algo_data["param"].tolist()))
                 order_map = {param: idx for idx, param in enumerate(ordered_params)}
                 algo_data["param_value"] = algo_data["param"].map(order_map)
 
-            # Group by the numeric parameter value
             summary_data = algo_data.groupby(['dataset', 'param_value'], as_index=False)[['time', 'ratio']].mean()
 
-            # Extract unique parameter steps to force clean X-axis ticks
             sweep_vals = sorted(summary_data["param_value"].unique())
             x_positions = {value: idx for idx, value in enumerate(sweep_vals)}
             summary_data["param_position"] = summary_data["param_value"].map(x_positions)
 
             for metric, ylabel in metrics:
-                fig, ax = plt.subplots(figsize=(6, 3.5))
+                fig, ax = self.create_figure(profile)
                 plotted_ds = 0
 
                 for ds in datasets:
                     ds_data = summary_data[summary_data["dataset"] == ds].sort_values(by="param_value")
                     if ds_data.empty: continue
 
-                    # Collect all parameter values for the tables
                     for _, row in ds_data.iterrows():
                         sweep_stats.append({
                             "Algorithm": algo,
@@ -93,7 +99,6 @@ class LineChartSweep(Plotter):
                             "Value": row[metric]
                         })
 
-                    # Derive a consistent style index based on dataset name
                     if ds in self.dataset_order:
                         style_idx = self.dataset_order.index(ds)
                     else:
@@ -102,52 +107,53 @@ class LineChartSweep(Plotter):
                     color = colors[style_idx % len(colors)]
                     mk = markers[style_idx % len(markers)]
 
-                    # Plot the line for this dataset
                     ax.plot(
                         ds_data["param_position"], ds_data[metric],
-                        label=ds, marker=mk, markersize=5.5, color=color,
-                        linestyle="-", linewidth=1.5, alpha=0.9, zorder=3
+                        label=ds, marker=mk, color=color,
+                        linestyle="-", alpha=0.9, zorder=3
                     )
 
                     plotted_ds += 1
 
-                ax.set_xlabel(f"parameter: {param_name}", fontsize=12, style='italic')
-                ax.set_ylabel(ylabel, fontsize=12, style='italic')
+                ax.set_xlabel(f"parameter: {param_name}", style='italic')
+                ax.set_ylabel(ylabel, style='italic')
+                if metric == "ratio":
+                    ax.yaxis.set_major_locator(MaxNLocator(nbins=6, min_n_ticks=5))
 
-                # Force X-ticks to exactly match the sweep values being tested
-                ax.set_xticks(range(len(sweep_vals)))
+                max_x_tick_labels = options.get("sweep_max_x_tick_labels", 10)
+                if len(sweep_vals) > max_x_tick_labels:
+                    tick_step = math.ceil(len(sweep_vals) / max_x_tick_labels)
+                    tick_indices = list(range(0, len(sweep_vals), tick_step))
+                    if tick_indices[-1] != len(sweep_vals) - 1:
+                        tick_indices.append(len(sweep_vals) - 1)
+                else:
+                    tick_indices = list(range(len(sweep_vals)))
 
-                # Rotate labels if there are many values to prevent overlap
-                rotation = 45 if len(sweep_vals) > 5 else 0
-                ax.set_xticklabels([format_param_tick(v) for v in sweep_vals], rotation=rotation)
+                ax.set_xticks(tick_indices)
+                ax.set_xticklabels([format_param_tick(sweep_vals[i]) for i in tick_indices], rotation=0)
 
-                # Consistent Grid Styling
-                ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
-                ax.grid(True, which="minor", axis="both", linestyle=":", linewidth=0.4, alpha=0.3)
+                self.style_major_minor_grid(ax, minor_axis="both")
 
-                sns.despine(ax=ax, top=True, right=True)
+                self.despine(ax, top=True, right=True)
 
-                # Consistent Legend Styling (Bottom row, compact)
                 if plotted_ds > 0:
-                    ax.legend(
-                        title="",
+                    self.add_centered_legend(
+                        ax,
                         loc='upper center',
-                        bbox_to_anchor=(0.5, -0.28 if rotation else -0.24),
+                        y=-0.24,
                         ncol=min(5, plotted_ds),
                         handlelength=1.5,
                         handletextpad=0.4,
                         columnspacing=1.0,
-                        frameon=False,
-                        fontsize=9
                     )
 
                 fig.tight_layout()
 
-                svg_path = out_dir / f"sweep_{algo}_{param_name}_{metric}.svg"
-                fig.savefig(svg_path, format="svg", bbox_inches="tight")
+                pdf_path = out_dir / f"sweep_{algo}_{param_name}_{metric}.pdf"
+                fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
                 plt.close(fig)
 
-                generated_files.extend([svg_path])
+                generated_files.extend([pdf_path])
 
         # ---------------------------------------------------------
         # Print and Save the Summary Tables
@@ -155,7 +161,6 @@ class LineChartSweep(Plotter):
         if sweep_stats:
             stats_df = pd.DataFrame(sweep_stats)
 
-            # Pivot table to make it easier to read (Parameters as columns)
             pivot_df = stats_df.pivot_table(
                 index=["Algorithm", "Dataset", "Metric"],
                 columns="Parameter",
@@ -163,12 +168,10 @@ class LineChartSweep(Plotter):
                 aggfunc="mean"
             ).reset_index()
 
-            # Detailed Dataset Breakdown
             detail_table = Table(
                 title=f"Sweep Details: {param_name} Values",
                 show_lines=True
             )
-            # Added no_wrap=True to prevent any unwanted wrapping
             detail_table.add_column("Algorithm", style="cyan", justify="left", no_wrap=True)
             detail_table.add_column("Dataset", style="magenta", justify="left", no_wrap=True)
             detail_table.add_column("Metric", style="green", justify="left", no_wrap=True)
@@ -191,18 +194,12 @@ class LineChartSweep(Plotter):
                         row_data.append("-")
                 detail_table.add_row(*row_data)
 
-            console.print(detail_table)
-
-            # Save the rich table to a text file
             detail_txt_path = out_dir / f"sweep_{param_name}_detailed_stats.txt"
             with open(detail_txt_path, "w", encoding="utf-8") as f:
-                # FIX: Set a large explicit width to prevent rich from truncating wide tables
                 calculated_width = 40 + len(param_cols) * 15
                 file_console = Console(file=f, width=max(1000, calculated_width))
                 file_console.print(detail_table)
 
             generated_files.append(detail_txt_path)
-
-            console.print(f"[green]✓[/green] Saved table text: [bold]{detail_txt_path.name}[/bold]")
 
         return generated_files

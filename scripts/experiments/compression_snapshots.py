@@ -13,15 +13,12 @@ def create_slice(source_path: str, max_lines: int, fraction: float) -> str:
     """
     source = Path(source_path)
 
-    # Save the partials in the algorithm's specific folder
     partial_path = source.parent / "partial" / f"cp{fraction}_{source.name}"
     partial_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Force rebuild to ensure clean data
     if partial_path.exists():
         return str(partial_path)
 
-    # Pure text copy (incredibly fast)
     with open(source, "r", encoding="utf-8") as fin, open(partial_path, "w", encoding="utf-8") as out:
         for i, line in enumerate(fin):
             if i >= max_lines:

@@ -8,19 +8,64 @@ from rich import box
 from matplotlib.lines import Line2D
 import optuna
 
-from scripts.analysis.plotters.base_plotter import Plotter, register
+from scripts.analysis.plotters.base_plotter import FigureProfile, Plotter, register
+from matplotlib.ticker import MaxNLocator
+
 
 @register
 class OptunaPlotter(Plotter):
     plotter_id = "pareto_front"
     description = "Optuna multi-objective visualizations for Bayesian tuning"
+    DATASET_FIGURE_PROFILE = FigureProfile(
+        figsize=(10.8, 6.075),
+        font_size=16.0,
+        label_size=19.0,
+        tick_size=16.0,
+        legend_size=15.0,
+        line_width=3.0,
+        marker_size=7.0,
+        title_size=19.0,
+        extra_rc={
+            "axes.linewidth": 1.6,
+            "xtick.major.size": 7.0,
+            "ytick.major.size": 7.0,
+            "xtick.major.width": 1.6,
+            "ytick.major.width": 1.6,
+        },
+    )
+    GLOBAL_FIGURE_PROFILE = FigureProfile(
+        figsize=(10.8, 6.075),
+        font_size=16.0,
+        label_size=19.0,
+        tick_size=16.0,
+        legend_size=15.0,
+        line_width=3.0,
+        marker_size=7.0,
+        title_size=19.0,
+        extra_rc={
+            "axes.linewidth": 1.6,
+            "xtick.major.size": 7.0,
+            "ytick.major.size": 7.0,
+            "xtick.major.width": 1.6,
+            "ytick.major.width": 1.6,
+        },
+    )
 
     def __init__(self):
         super().__init__()
         self.generates_plots = True
 
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
-        self.set_chart_theme()
+        dataset_profile = self.use_figure_profile(
+            self.DATASET_FIGURE_PROFILE,
+            options,
+            profile_name="pareto_dataset",
+        )
+        global_profile = self.get_figure_profile(
+            self.GLOBAL_FIGURE_PROFILE,
+            options,
+            profile_name="pareto_global",
+        )
 
         if "dataset" not in data.columns:
             data = data.copy()
@@ -30,9 +75,8 @@ class OptunaPlotter(Plotter):
         generated_files = []
         pareto_data = []
 
-        # --- MANUAL DATA ADJUSTMENTS ---
         algo_adjustments = {
-            "kdd20-mosso": {"time_mult": 1.0, "ratio_mult": 1.0},
+            "MoSSo": {"time_mult": 1.0, "ratio_mult": 1.0},
             "sm": {"time_mult": 1.0, "ratio_mult": 1.0},
             "sm_thr": {"time_mult": 1.0, "ratio_mult": 1.0},
         }
@@ -43,49 +87,13 @@ class OptunaPlotter(Plotter):
             if mask.any():
                 data.loc[mask, "time"] *= adj.get("time_mult", 1.0)
                 data.loc[mask, "ratio"] *= adj.get("ratio_mult", 1.0)
-        # -------------------------------
 
-        # --- NORMALIZATION TO BASELINE (BOTH AXES) ---
-        baseline_algo = "kdd20-mosso"
-        normalized_x = False
-        normalized_y = False
-
-        for ds in datasets:
-            ds_mask = data['dataset'] == ds
-            baseline_mask = ds_mask & (data['algorithm'] == baseline_algo)
-
-            # Find the anchor values (mean baseline performance, or max if baseline missing)
-            if baseline_mask.any():
-                baseline_time = data.loc[baseline_mask, 'time'].mean()
-                baseline_ratio = data.loc[baseline_mask, 'ratio'].mean()
-            else:
-                baseline_time = data.loc[ds_mask, 'time'].max()
-                baseline_ratio = data.loc[ds_mask, 'ratio'].max()
-
-            # Normalize X (Time)
-            if baseline_time and baseline_time > 0:
-                data.loc[ds_mask, 'time'] = data.loc[ds_mask, 'time'] / baseline_time
-                normalized_x = True
-
-            # Normalize Y (Ratio)
-            if baseline_ratio and baseline_ratio > 0:
-                data.loc[ds_mask, 'ratio'] = data.loc[ds_mask, 'ratio'] / baseline_ratio
-                normalized_y = True
-
-        if normalized_x:
-            time_label = "normalized time (vs baseline)"
-            time_col_name = "Norm. Time"
-        else:
-            time_label = options.get("time_label", "time (seconds)").lower()
-            time_col_name = "Time (s)"
-
-        if normalized_y:
-            ratio_label = "normalized size (vs baseline)"
-            ratio_col_name = "Norm. Size"
-        else:
-            ratio_label = "relative size"
-            ratio_col_name = "Relative Size"
-        # ---------------------------------------------
+        time_label = options.get("pareto_time_label", "Execution Time (s)")
+        time_col_name = "Time (s)"
+        ratio_label = options.get("pareto_ratio_label", "Relative Size")
+        ratio_col_name = "Relative Size"
+        trial_alpha = options.get("pareto_trial_alpha", 0.16)
+        trial_marker_size = options.get("pareto_trial_marker_size", 18.0)
 
         exclude_cols = {'dataset', 'algorithm', 'time', 'ratio', 'change_ratio', 'trial', 'power_of_2', 'edges_evaluated', 'time_micros'}
         param_cols = [c for c in data.columns if c not in exclude_cols]
@@ -97,14 +105,10 @@ class OptunaPlotter(Plotter):
             ds_data = data[data["dataset"] == ds].copy()
             if ds_data.empty: continue
 
-            fig, ax = plt.subplots(figsize=(7, 4.5))
+            fig, ax = self.create_figure(dataset_profile)
             plotted_algos = 0
             pareto_t_min, pareto_t_max = float('inf'), float('-inf')
-
-            # Add reference lines for the 1.0 baseline intersection
-            if normalized_x and normalized_y:
-                ax.axhline(1.0, color="#CBD5E1", linestyle="--", linewidth=1.0, zorder=1)
-                ax.axvline(1.0, color="#CBD5E1", linestyle="--", linewidth=1.0, zorder=1)
+            pareto_r_min, pareto_r_max = float('inf'), float('-inf')
 
             for i, algo in enumerate(algos):
                 algo_data = ds_data[ds_data["algorithm"] == algo].copy()
@@ -114,11 +118,20 @@ class OptunaPlotter(Plotter):
                 color = style["color"]
                 mk = style["marker"]
 
-                ax.plot(
-                    algo_data["time"], algo_data["ratio"],
-                    marker=mk, markersize=3, color=color,
-                    linestyle="none", alpha=0.25, zorder=2,
-                    label="_nolegend_"
+                pareto_r_min = min(pareto_r_min, algo_data["ratio"].min())
+                pareto_r_max = max(pareto_r_max, algo_data["ratio"].max())
+
+                ax.scatter(
+                    algo_data["time"],
+                    algo_data["ratio"],
+                    marker=mk,
+                    s=trial_marker_size,
+                    color=color,
+                    alpha=trial_alpha,
+                    linewidths=0,
+                    zorder=2,
+                    label="_nolegend_",
+                    rasterized=True,
                 )
 
                 algo_data = algo_data.sort_values(by=["ratio", "time"])
@@ -136,7 +149,7 @@ class OptunaPlotter(Plotter):
 
                     ax.plot(
                         pareto_df["time"], pareto_df["ratio"],
-                        label=algo, color=color, linestyle="-", linewidth=1.5,
+                        label=algo, color=color, linestyle="-",
                         alpha=0.9, zorder=3
                     )
 
@@ -160,18 +173,24 @@ class OptunaPlotter(Plotter):
                                 pt_info[p] = val
                         pareto_data.append(pt_info)
 
-            import seaborn as sns
-            ax.set_xlabel(time_label, fontsize=12, style='italic')
-            ax.set_ylabel(ratio_label, fontsize=12, style='italic')
+            ax.set_xlabel(time_label, style='italic', labelpad=10)
+            ax.set_ylabel(ratio_label, style='italic', labelpad=12)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=6))
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+            ax.tick_params(axis="both", which="major", pad=7)
+            ax.set_axisbelow(True)
 
             if pareto_t_max > float('-inf'):
                 t_range_line = pareto_t_max - pareto_t_min
                 t_pad_main = t_range_line * 0.03 if t_range_line > 0 else 0.1
                 ax.set_xlim(max(0, pareto_t_min - t_pad_main), pareto_t_max + t_pad_main)
+            if pareto_r_max > float('-inf'):
+                r_range_line = pareto_r_max - pareto_r_min
+                r_pad_main = r_range_line * 0.08 if r_range_line > 0 else 0.01
+                ax.set_ylim(max(0, pareto_r_min - r_pad_main), pareto_r_max + r_pad_main)
 
-            ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
-            ax.grid(True, which="minor", axis="x", linestyle=":", linewidth=0.4, alpha=0.3)
-            sns.despine(ax=ax, top=True, right=True)
+            self.style_major_minor_grid(ax, minor_axis="x")
+            self.despine(ax, top=True, right=True)
 
             if plotted_algos > 0:
                 legend_elements = []
@@ -180,31 +199,26 @@ class OptunaPlotter(Plotter):
                         style = self.get_algo_style(a)
                         legend_elements.append(Line2D([0], [0], color=style["color"], lw=1.5, marker=style["marker"], label=a))
 
-                ax.legend(
-                    handles=legend_elements, title="", loc='upper center', bbox_to_anchor=(0.5, -0.15),
-                    ncol=plotted_algos, handlelength=1.5, handletextpad=0.4, columnspacing=1.0, frameon=False, fontsize=9
+                self.add_centered_legend(
+                    ax,
+                    handles=legend_elements, loc='upper center', y=-0.18,
+                    ncol=min(plotted_algos, 5), handlelength=1.8, handletextpad=0.5, columnspacing=1.2
                 )
 
-            fig.tight_layout()
-            svg_path = out_dir / f"pareto_front_{ds}.svg"
-            fig.savefig(svg_path, format="svg", bbox_inches="tight")
+            fig.tight_layout(rect=(0.0, 0.10, 1.0, 1.0))
+            pdf_path = out_dir / f"pareto_front_{ds}.pdf"
+            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
             plt.close(fig)
-            generated_files.extend([svg_path])
+            generated_files.extend([pdf_path])
 
         # ==========================================================
         # 2. GLOBAL FRONTIER BY ALGORITHM (ALL DATASETS IN ONE PLOT)
         # ==========================================================
         global_pareto_data = []
-        fig_g, ax_g = plt.subplots(figsize=(7, 4.5))
+        fig_g, ax_g = self.create_figure(global_profile)
         plotted_global_algos = 0
         g_pareto_t_min, g_pareto_t_max = float('inf'), float('-inf')
-
-        # Add crosshairs for the (1.0, 1.0) baseline center
-        if normalized_x and normalized_y:
-            ax_g.axhline(1.0, color="#CBD5E1", linestyle="--", linewidth=1.2, zorder=1)
-            ax_g.axvline(1.0, color="#CBD5E1", linestyle="--", linewidth=1.2, zorder=1)
-            # Add a distinct marker for the baseline center
-            ax_g.plot([1.0], [1.0], marker="+", markersize=12, color="gray", zorder=4)
+        g_pareto_r_min, g_pareto_r_max = float('inf'), float('-inf')
 
         for i, algo in enumerate(algos):
             algo_data = data[data["algorithm"] == algo].copy()
@@ -214,11 +228,20 @@ class OptunaPlotter(Plotter):
             color = style["color"]
             mk = style["marker"]
 
-            ax_g.plot(
-                algo_data["time"], algo_data["ratio"],
-                marker=mk, markersize=3, color=color,
-                linestyle="none", alpha=0.25, zorder=2,
-                label="_nolegend_"
+            g_pareto_r_min = min(g_pareto_r_min, algo_data["ratio"].min())
+            g_pareto_r_max = max(g_pareto_r_max, algo_data["ratio"].max())
+
+            ax_g.scatter(
+                algo_data["time"],
+                algo_data["ratio"],
+                marker=mk,
+                s=trial_marker_size,
+                color=color,
+                alpha=trial_alpha,
+                linewidths=0,
+                zorder=2,
+                label="_nolegend_",
+                rasterized=True,
             )
 
             algo_data = algo_data.sort_values(by=["ratio", "time"])
@@ -236,7 +259,7 @@ class OptunaPlotter(Plotter):
 
                 ax_g.plot(
                     pareto_df["time"], pareto_df["ratio"],
-                    label=algo, color=color, linestyle="-", linewidth=1.5,
+                    label=algo, color=color, linestyle="-",
                     alpha=0.9, zorder=3
                 )
 
@@ -260,18 +283,24 @@ class OptunaPlotter(Plotter):
                             pt_info[p] = val
                     global_pareto_data.append(pt_info)
 
-        ax_g.set_xlabel(time_label, fontsize=12, style='italic')
-        ax_g.set_ylabel(ratio_label, fontsize=12, style='italic')
+        ax_g.set_xlabel(time_label, style='italic', labelpad=10)
+        ax_g.set_ylabel(ratio_label, style='italic', labelpad=12)
+        ax_g.xaxis.set_major_locator(MaxNLocator(nbins=6))
+        ax_g.yaxis.set_major_locator(MaxNLocator(nbins=5))
+        ax_g.tick_params(axis="both", which="major", pad=7)
+        ax_g.set_axisbelow(True)
 
         if g_pareto_t_max > float('-inf'):
             t_range_line = g_pareto_t_max - g_pareto_t_min
             t_pad_main = t_range_line * 0.03 if t_range_line > 0 else 0.1
             ax_g.set_xlim(max(0, g_pareto_t_min - t_pad_main), g_pareto_t_max + t_pad_main)
+        if g_pareto_r_max > float('-inf'):
+            r_range_line = g_pareto_r_max - g_pareto_r_min
+            r_pad_main = r_range_line * 0.08 if r_range_line > 0 else 0.01
+            ax_g.set_ylim(max(0, g_pareto_r_min - r_pad_main), g_pareto_r_max + r_pad_main)
 
-        ax_g.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.5)
-        ax_g.grid(True, which="minor", axis="x", linestyle=":", linewidth=0.4, alpha=0.3)
-        import seaborn as sns
-        sns.despine(ax=ax_g, top=True, right=True)
+        self.style_major_minor_grid(ax_g, minor_axis="x")
+        self.despine(ax_g, top=True, right=True)
 
         if plotted_global_algos > 0:
             legend_elements = []
@@ -280,84 +309,83 @@ class OptunaPlotter(Plotter):
                     style = self.get_algo_style(a)
                     legend_elements.append(Line2D([0], [0], color=style["color"], lw=1.5, marker=style["marker"], label=a))
 
-            ax_g.legend(
-                handles=legend_elements, title="", loc='upper center', bbox_to_anchor=(0.5, -0.15),
-                ncol=plotted_global_algos, handlelength=1.5, handletextpad=0.4, columnspacing=1.0, frameon=False, fontsize=9
+            self.add_centered_legend(
+                ax_g,
+                handles=legend_elements, loc='upper center', y=-0.18,
+                ncol=min(plotted_global_algos, 5), handlelength=1.8, handletextpad=0.5, columnspacing=1.2
             )
 
-        plt.title("Global Pareto Frontier by Algorithm", fontsize=12, pad=10, weight="bold")
-        fig_g.tight_layout()
-        global_svg = out_dir / "pareto_front_global.svg"
-        fig_g.savefig(global_svg, format="svg", bbox_inches="tight")
+        ax_g.set_title("Global Pareto Frontier by Algorithm", pad=10, weight="bold")
+        fig_g.tight_layout(rect=(0.0, 0.10, 1.0, 1.0))
+        global_pdf = out_dir / "pareto_front_global.pdf"
+        fig_g.savefig(global_pdf, format="pdf", bbox_inches="tight")
         plt.close(fig_g)
 
-        generated_files.extend([global_svg])
+        generated_files.extend([global_pdf])
 
         # ==========================================================
         # 3. STATISTICAL TABLES EXPORT
         # ==========================================================
-        console = Console(record=True)
-
-        # 3.1 Per Dataset Table
-        if pareto_data:
-            pareto_df_export = pd.DataFrame(pareto_data)
-
-            base_cols = ["Dataset", "Algorithm", ratio_col_name, time_col_name]
-            dynamic_cols = [c for c in pareto_df_export.columns if c not in base_cols]
-            all_cols = base_cols + dynamic_cols
-            pareto_df_export = pareto_df_export[all_cols]
-
-            table = Table(title="All Pareto Optimal Configurations (Per Dataset)", box=box.SIMPLE, show_header=True, header_style="bold yellow")
-            for col in all_cols:
-                if col == "Dataset": table.add_column(col, style="cyan")
-                elif col == "Algorithm": table.add_column(col, style="green")
-                elif col in base_cols: table.add_column(col, justify="right")
-                else: table.add_column(str(col), justify="right", style="magenta")
-
-            for _, row in pareto_df_export.iterrows():
-                row_data = []
-                for col in all_cols:
-                    val = row.get(col)
-                    if pd.isna(val): row_data.append("-")
-                    elif col in [ratio_col_name, time_col_name]: row_data.append(f"{val:.4f}")
-                    elif col == "thr_end" and isinstance(val, (int, float)): row_data.append(f"{val:.2f}")
-                    else: row_data.append(str(val))
-                table.add_row(*row_data)
-
-            console.print(table)
-
-        # 3.2 Global Table (Per Algorithm)
-        if global_pareto_data:
-            g_df_export = pd.DataFrame(global_pareto_data)
-            base_cols_g = ["Algorithm", "Dataset", ratio_col_name, time_col_name]
-            dynamic_cols_g = [c for c in g_df_export.columns if c not in base_cols_g]
-            all_cols_g = base_cols_g + dynamic_cols_g
-            g_df_export = g_df_export[all_cols_g]
-
-            g_table = Table(title="Global Pareto Optimal Configurations (Per Algorithm)", box=box.SIMPLE, show_header=True, header_style="bold yellow")
-            for col in all_cols_g:
-                if col == "Algorithm": g_table.add_column(col, style="green")
-                elif col == "Dataset": g_table.add_column(col, style="cyan")
-                elif col in base_cols_g: g_table.add_column(col, justify="right")
-                else: g_table.add_column(str(col), justify="right", style="magenta")
-
-            for _, row in g_df_export.iterrows():
-                row_data = []
-                for col in all_cols_g:
-                    val = row.get(col)
-                    if pd.isna(val): row_data.append("-")
-                    elif col in [ratio_col_name, time_col_name]: row_data.append(f"{val:.4f}")
-                    elif col == "thr_end" and isinstance(val, (int, float)): row_data.append(f"{val:.2f}")
-                    else: row_data.append(str(val))
-                g_table.add_row(*row_data)
-
-            console.print("\n")
-            console.print(g_table)
-
-        # Output Text File
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
         txt_path = out_dir / f"pareto_summary_tables.txt"
-        console.save_text(str(txt_path))
+        with open(txt_path, "w", encoding="utf-8") as f:
+            file_console = Console(file=f, width=1000)
+
+            if pareto_data:
+                pareto_df_export = pd.DataFrame(pareto_data)
+
+                base_cols = ["Dataset", "Algorithm", ratio_col_name, time_col_name]
+                dynamic_cols = [c for c in pareto_df_export.columns if c not in base_cols]
+                all_cols = base_cols + dynamic_cols
+                pareto_df_export = pareto_df_export[all_cols]
+
+                table = Table(title="All Pareto Optimal Configurations (Per Dataset)", box=box.SIMPLE, show_header=True, header_style="bold yellow")
+                for col in all_cols:
+                    if col == "Dataset": table.add_column(col, style="cyan")
+                    elif col == "Algorithm": table.add_column(col, style="green", no_wrap=True)
+                    elif col in base_cols: table.add_column(col, justify="right")
+                    else: table.add_column(str(col), justify="right", style="magenta")
+
+                for _, row in pareto_df_export.iterrows():
+                    row_data = []
+                    for col in all_cols:
+                        val = row.get(col)
+                        if pd.isna(val): row_data.append("-")
+                        elif col in [ratio_col_name, time_col_name]: row_data.append(f"{val:.4f}")
+                        elif col == "thr_end" and isinstance(val, (int, float)): row_data.append(f"{val:.2f}")
+                        else: row_data.append(str(val))
+                    table.add_row(*row_data)
+
+                file_console.print(table)
+
+            if global_pareto_data:
+                g_df_export = pd.DataFrame(global_pareto_data)
+                base_cols_g = ["Algorithm", "Dataset", ratio_col_name, time_col_name]
+                dynamic_cols_g = [c for c in g_df_export.columns if c not in base_cols_g]
+                all_cols_g = base_cols_g + dynamic_cols_g
+                g_df_export = g_df_export[all_cols_g]
+
+                g_table = Table(title="Global Pareto Optimal Configurations (Per Algorithm)", box=box.SIMPLE, show_header=True, header_style="bold yellow")
+                for col in all_cols_g:
+                    if col == "Algorithm": g_table.add_column(col, style="green", no_wrap=True)
+                    elif col == "Dataset": g_table.add_column(col, style="cyan")
+                    elif col in base_cols_g: g_table.add_column(col, justify="right")
+                    else: g_table.add_column(str(col), justify="right", style="magenta")
+
+                for _, row in g_df_export.iterrows():
+                    row_data = []
+                    for col in all_cols_g:
+                        val = row.get(col)
+                        if pd.isna(val): row_data.append("-")
+                        elif col in [ratio_col_name, time_col_name]: row_data.append(f"{val:.4f}")
+                        elif col == "thr_end" and isinstance(val, (int, float)): row_data.append(f"{val:.2f}")
+                        else: row_data.append(str(val))
+                    g_table.add_row(*row_data)
+
+                if pareto_data:
+                    file_console.print()
+                file_console.print(g_table)
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
         generated_files.append(txt_path)
 
         return generated_files

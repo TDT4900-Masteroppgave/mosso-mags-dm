@@ -2,65 +2,117 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.stats import gmean
+from rich.console import Console
+from rich.table import Table
 
-from scripts.analysis.plotters.base_plotter import Plotter, register
+from scripts.analysis.plotters.base_plotter import FigureProfile, Plotter, register
+
+
+BAR_EDGE_COLOR = "black"
+BAR_EDGE_WIDTH = 1.5
+
 
 @register
 class BarChartPlotter(Plotter):
     plotter_id = "bar_chart_time_log"
     description = "Bar chart comparing time (logarithmic scale)"
+    FIGURE_PROFILE = FigureProfile(
+        figsize=(10.8, 6.075),
+        font_size=35.0,
+        label_size=30.0,
+        tick_size=30.0,
+        legend_size=28.0,
+        line_width=3.5,
+        marker_size=10.0,
+        extra_rc={
+            "axes.linewidth": 2.0,
+            "xtick.major.size": 7.0,
+            "ytick.major.size": 7.0,
+            "xtick.major.width": 2.0,
+            "ytick.major.width": 2.0,
+        },
+    )
 
     def generate_artifacts(self, data: pd.DataFrame, algos: list[str], context: str, out_dir: Path, options: dict) -> list[Path]:
-        self.set_chart_theme()
+        profile = self.use_figure_profile(self.FIGURE_PROFILE, options, profile_name="paper_bar")
 
-        suffix = "_".join(algos)
+        ordered_datasets = self.get_dataset_order(data)
+        metadata = self.get_dataset_metadata()
 
-        # 1. Generate and display the statistics table
-        stats_df = data.groupby(["dataset", "algorithm"])["time"].agg(
-            Mean='mean',
-            Median='median',
-            Min='min',
-            Max='max',
-            StdDev='std'
+        stats_df = data.groupby(["dataset", "algorithm"]).agg(
+            time_mean=("time", "mean"),
+            time_std=("time", "std"),
+            time_cv=("time", self.cv),
         ).reset_index()
 
-        for col in ['Mean', 'Median', 'Min', 'Max', 'StdDev']:
-            stats_df[col] = stats_df[col].apply(
-                lambda x: f"{x:.6f}".rstrip('0').rstrip('.') if pd.notnull(x) and '.' in f"{x:.6f}" else x
+        table_ds = Table(title="Runtime Statistics (Log Scale Plotter)", show_header=True, show_lines=True)
+        table_ds.add_column("Dataset", style="cyan")
+        table_ds.add_column("Nodes", style="dim")
+        table_ds.add_column("Edges", style="dim")
+        table_ds.add_column("Algorithm", style="magenta", no_wrap=True, min_width=18)
+        table_ds.add_column("Time Mean (s)")
+        table_ds.add_column("Time StdDev (s)")
+        table_ds.add_column("Time CV (%)", style="green")
+
+        for ds in ordered_datasets:
+            ds_data = stats_df[stats_df["dataset"] == ds]
+            if ds_data.empty:
+                continue
+
+            ds_meta = metadata.get(ds, {})
+            nodes = str(ds_meta.get("nodes", "-"))
+            edges = str(ds_meta.get("edges", "-"))
+
+            for _, row in ds_data.iterrows():
+                algo = str(row["algorithm"])
+                if algo not in algos:
+                    continue
+
+                t_mean = f"{row['time_mean']:.3f}".rstrip("0").rstrip(".") if pd.notnull(row["time_mean"]) else "-"
+                t_std = f"{row['time_std']:.3f}".rstrip("0").rstrip(".") if pd.notnull(row["time_std"]) else "-"
+                t_cv = self.format_percent(row["time_cv"])
+                table_ds.add_row(ds, nodes, edges, algo, t_mean, t_std, t_cv)
+
+        table_gm = Table(title="Geometric Means and Stability Summary", show_header=True)
+        table_gm.add_column("Algorithm", style="magenta", no_wrap=True, min_width=18)
+        table_gm.add_column("Time GeoMean (s)")
+        table_gm.add_column("Median Time CV (%)")
+        table_gm.add_column("IQR Time CV (%)")
+        table_gm.add_column("Max Time CV (%)")
+
+        for algo in algos:
+            algo_data = stats_df[stats_df["algorithm"] == algo]
+            if algo_data.empty:
+                continue
+
+            t_vals = algo_data["time_mean"].dropna()
+            t_gm = gmean(t_vals) if not t_vals.empty else float("nan")
+            time_cv_vals = algo_data["time_cv"].dropna()
+
+            if time_cv_vals.empty:
+                cv_summary = ["-", "-", "-"]
+            else:
+                cv_summary = [
+                    self.format_percent(time_cv_vals.median()),
+                    self.format_percent(time_cv_vals.quantile(0.75) - time_cv_vals.quantile(0.25)),
+                    self.format_percent(time_cv_vals.max()),
+                ]
+
+            table_gm.add_row(
+                algo,
+                f"{t_gm:.2f}" if pd.notnull(t_gm) else "-",
+                *cv_summary,
             )
 
-        from rich.console import Console
-        from rich.table import Table
-        
-        console = Console(record=True)
-        table = Table(title="Runtime Statistics (Log Scale Plotter)", show_header=True)
-        table.add_column("Dataset", style="cyan")
-        table.add_column("Algorithm", style="magenta")
-        table.add_column("Mean")
-        table.add_column("Median")
-        table.add_column("Min")
-        table.add_column("Max")
-        table.add_column("StdDev")
-
-        for _, row in stats_df.iterrows():
-            table.add_row(
-                str(row["dataset"]),
-                str(row["algorithm"]),
-                str(row["Mean"]),
-                str(row["Median"]),
-                str(row["Min"]),
-                str(row["Max"]),
-                str(row["StdDev"])
-            )
-        
-        console.print(table)
-        
-        txt_path = out_dir / f"runtime_bar_chart_log_stats_{suffix}.txt"
+        txt_path = out_dir / f"time_compression_log_stats.txt"
         with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(console.export_text())
+            file_console = Console(file=f, width=220)
+            file_console.print(table_ds)
+            file_console.print()
+            file_console.print(table_gm)
 
-        # 2. Generate the plot
-        fig, ax = plt.subplots(figsize=(6, 3.5))
+        fig, ax = self.create_figure(profile)
 
         palette = [self.get_algo_style(algo)["color"] for algo in algos]
 
@@ -70,39 +122,21 @@ class BarChartPlotter(Plotter):
             y="time",
             hue="algorithm",
             hue_order=algos,
-            order=self.get_dataset_order(data),
+            order=ordered_datasets,
             palette=palette,
             errorbar=None,
-            edgecolor="white",
-            linewidth=0.8,
+            edgecolor=BAR_EDGE_COLOR,
+            linewidth=BAR_EDGE_WIDTH,
             ax=ax
         )
 
-        ax.set_xlabel("")
         ax.set_yscale("log", base=10)
-        ax.set_ylabel("time (microseconds)", fontsize=12, style='italic')
 
-        total_bars = len(data["dataset"].unique()) * len(algos)
-        if total_bars <= 20:
-            for container in ax.containers:
-                labels = [f"{val:.4f}".rstrip('0').rstrip('.') if '.' in f"{val:.4f}" else str(val) for val in container.datavalues]
-                ax.bar_label(container, labels=labels, padding=3, fontsize=8, color='#4A5568')
+        self.style_paper_bar_chart(ax, ylabel="time (seconds)", algos=algos)
+        fig.tight_layout(pad=0.4)
 
-        sns.despine(ax=ax, top=True, right=True)
+        pdf_path = out_dir / "runtime_bar_chart_log.pdf"
+        fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+        plt.close(fig)
 
-        ax.legend(
-            title="",
-            bbox_to_anchor=(0.5, 1.15),
-            loc='upper center',
-            ncol=len(algos),
-            frameon=False,
-            fontsize=9
-        )
-
-        plt.tight_layout()
-
-        svg_path = out_dir / f"runtime_bar_chart_log_{suffix}.svg"
-        plt.savefig(svg_path, format="svg", bbox_inches="tight")
-        plt.close()
-
-        return [svg_path, txt_path]
+        return [pdf_path, txt_path]

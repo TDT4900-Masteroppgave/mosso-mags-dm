@@ -1,1 +1,1 @@
-./run.sh bayesian --jobs -1 --trials 100 --group tuning --algorithm MoSSo sm top-b cap sm_thr ds ds_thr
+./run.sh bayesian --jobs -1 --trials 500 --dataset CA PR BK EN EA SL FB DB --algorithm MoSSo sm top-b cap sm_thr ds ds_thr

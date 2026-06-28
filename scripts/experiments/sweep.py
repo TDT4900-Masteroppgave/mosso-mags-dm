@@ -13,7 +13,6 @@ class ParameterSweep(Experiment):
             start, stop, step = self.args.range
             sweep_array = np.arange(start, stop + step, step)
 
-            # Convert back to native Python types to avoid JSON/DB serialization issues later
             if config["type"] == int:
                 self.sweep_values = [int(x) for x in sweep_array]
             else:

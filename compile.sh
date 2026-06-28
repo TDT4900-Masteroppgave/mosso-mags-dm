@@ -6,7 +6,6 @@ echo "[*] Compiling Java sources..."
 rm -rf class mosso-1.0.jar
 mkdir -p class
 
-# shellcheck disable=SC2012
 FASTUTIL_JAR=$(ls fastutil-*.jar 2>/dev/null | head -n 1)
 
 if [ -z "$FASTUTIL_JAR" ]; then
@@ -14,7 +13,6 @@ if [ -z "$FASTUTIL_JAR" ]; then
     exit 1
 fi
 
-# shellcheck disable=SC2046
 javac -cp "./$FASTUTIL_JAR" -d class $(find ./src -name "*.java")
 
 echo "[*] Creating JAR archive..."

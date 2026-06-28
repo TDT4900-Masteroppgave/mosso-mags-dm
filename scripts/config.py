@@ -13,7 +13,6 @@ PARAM_CONFIG = {
     "interval": {"description": "interval", "default": 1000, "type": int},
     "b": {"description": "top candidates", "default": 1, "bounds": (1, 5), "step": 1, "type": int},
     "h": {"description": "hashes", "default": 4, "bounds": (1, 5), "step": 1, "type": int},
-    #"h": {"description": "hashes", "default": 4, "bounds": (1, 50), "step": 10, "type": int},
     "thr_start": {"description": "start threshold", "default": 1.0, "type": float},
     "thr": {"description": "end threshold", "default": 0.0, "bounds": (0.0, 1.0), "step": 0.1, "type": float},
     "cap": {"description": "cap of coarse cluster buckets", "default": 60, "bounds": (10, 120), "step": 10,
@@ -311,13 +310,6 @@ DATASETS = {
             "type": "Hyperlink"
         },
     },
-    "HW": {
-        "url": "https://sparse.tamu.edu/MM/LAW/hollywood-2009.tar.gz",
-        "filename": "hollywood-2009.mtx",
-        "meta": {
-            "type": "Collaboration"
-        },
-    },
     "UK": {
         "url": "https://sparse.tamu.edu/MM/LAW/uk-2002.tar.gz",
         "filename": "uk-2002.mtx",
@@ -356,13 +348,13 @@ DATASETS = {
 }
 
 DATASET_GROUP = {
-    "mosso": ["PR", "EN", "FB", "EU", "DB", "YT", "SK", "LJ", "HW", "UK"],
+    "mosso": ["PR", "EN", "FB", "EU", "DB", "YT", "SK", "LJ", "UK"],
     "mags": ["CA", "EN", "BK", "EA", "SL", "DB", "AM", "CN", "YT", "SK", "IN", "EU", "LJ", "IC", "UK-05", "IT"],
 
     "tuning": ["PR", "EN", "FB", "DB", "YT"],
 
-    "dense": ["PR", "FB", "EU", "HW"],               # High-average degree / high clustering
-    "sparse": ["CA", "EA", "DB", "YT"],              # Low average degree / tree-like
-    "skewed": ["EN", "YT", "SK", "EU"],              # Massive max-degree hub nodes
+    "dense": ["PR", "FB", "EU", "HW"],
+    "sparse": ["CA", "EA", "DB", "YT"],
+    "skewed": ["EN", "YT", "SK", "EU"],
 
 }
